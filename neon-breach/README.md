@@ -66,3 +66,14 @@ Helpers: `mb.wx / mb.wz` build walls with door and window gaps, `mb.car`, `mb.tr
 - Player movement is client-authoritative (the server validates speed and bounds, and hits are server-authoritative). Fine for friends; a public game would want stricter movement validation.
 - No accounts, persistence or matchmaking beyond the public rooms.
 - Single server process — rooms live in memory.
+
+## Rendering
+
+Everything visual is generated in code, so there are no image or model files to ship.
+
+- `client/textures.js` builds tileable procedural textures (brick, concrete, corrugated metal, marble, stone, wood, grass, foliage, fabric and more) with a baked bump emboss.
+- `client/mapmesh.js` turns each map's boxes into UV-mapped meshes with per-vertex ambient occlusion, rounded edges on soft materials (hedges, sandbags, rocks) and the visual-only scenery listed in each map's `decor`: trees, cars, a helicopter, barrels, pipes, lamps, columns.
+- `client/geom.js` holds the smooth primitives (sphere, capsule, cylinder, cone, rounded box) used for characters, weapons, pickups and effects.
+- `client/gl.js` renders with a baked sun shadow map, hemisphere lighting, specular on metal, fog and a cloudy sky. Characters get soft contact shadows. Low quality turns shadow filtering down.
+
+Collision, hitboxes and bot navigation still use the simple box layout, so the visuals can change without touching gameplay.

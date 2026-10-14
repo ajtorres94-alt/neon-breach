@@ -688,29 +688,50 @@ function drawViewmodel(t, cam) {
   let x = lerp(0.19, 0, a), y = lerp(-0.2, -0.105, a), z = lerp(-0.38, -0.3, a);
   x += Math.cos(S.bob) * 0.012 * sp * bob; y += Math.abs(Math.sin(S.bob)) * 0.014 * sp * bob;
   z += S.vmKick * 0.07; y += S.vmKick * 0.012;
-  let tilt = S.vmKick * 0.12, roll = 0;
+  let tilt = S.vmKick * 0.12;
   const tt = now();
   if (S.reloadEnd) { const prog = 1 - (S.reloadEnd - tt) / w.reload, dip = Math.sin(clamp(prog, 0, 1) * Math.PI); y -= dip * 0.14; tilt -= dip * 0.5; x += dip * 0.04; }
   if (tt < S.switchEnd) { const p = (S.switchEnd - tt) / 0.3; y -= p * 0.18; tilt -= p * 0.4; }
   const cp = Math.cos(tilt), sp2 = Math.sin(tilt);
   R.beginViewmodel(Math.max(0.6, cam.fov * 0.62 + 0.1));
-  const accent = hex(w.color), skin = OPERATORS[settings.op % OPERATORS.length].skin;
+  const accent = hex(w.color), op = OPERATORS[settings.op % OPERATORS.length], skin = op.skin;
+  const gold = id === 'golden';
+  // local (weapon-space) point -> view space, rotated about X by `tilt`
+  const P = (lx, ly, lz) => [x + lx, y + ly * cp - lz * sp2, z + ly * sp2 + lz * cp];
   for (const p of parts) {
-    // rotate the part offset about the weapon pivot by `tilt` around X
-    const py = p[1] * cp - p[2] * sp2, pz = p[1] * sp2 + p[2] * cp;
-    const col = p[6] === 'a' ? accent : COL[p[6]] || COL.m;
-    R.box(x + p[0], y + py, z + pz, p[3], p[4], p[5], 0, tilt, col, id === 'golden' ? 0.35 : 0, 1);
+    const c = P(p[0], p[1], p[2]), k = p[6], col = k === 'a' ? accent.map(v => v * 0.62) : COL[k] || COL.m;
+    const sx = p[3], sy = p[4], sz = p[5], spec = gold ? 1.1 : k === 'a' ? 0.15 : k === 'd' ? 0.6 : 0.45;
+    if (Math.abs(sx - sy) < 0.011 && sz > 2.2 * Math.max(sx, sy)) {          // barrels, tubes, launcher
+      const e0 = P(p[0], p[1], p[2] - sz / 2), e1 = P(p[0], p[1], p[2] + sz / 2);
+      R.tube(e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], Math.max(sx, sy) / 2, Math.max(sx, sy) / 2, col, spec, gold ? 0.35 : 0);
+    } else R.rbox(c[0], c[1], c[2], sx, sy, sz, 0, tilt, col, Math.min(sx, sy, sz) * 0.32, gold ? 0.35 : 0, 1, spec);
   }
+  // muzzle ring on long barrels
+  const barrel = parts.find(q => Math.abs(q[3] - q[4]) < 0.011 && q[5] > 2.2 * Math.max(q[3], q[4]) && q[6] === 'd');
+  if (barrel) { const m0 = P(barrel[0], barrel[1], barrel[2] - barrel[5] / 2), m1 = P(barrel[0], barrel[1], barrel[2] - barrel[5] / 2 + 0.035); R.tube(m0[0], m0[1], m0[2], m1[0], m1[1], m1[2], barrel[3] * 0.62, barrel[3] * 0.62, [0.05, 0.05, 0.055], 0.8); }
   const mp = (tt - S.meleeAt) / 0.35;
   if (mp >= 0 && mp < 1) {                                          // knife slash (also used for the throw)
-    const sw = Math.sin(mp * Math.PI);
-    R.box(lerp(0.34, -0.2, mp), -0.12 + sw * 0.1, -0.42 - sw * 0.1, 0.025, 0.04, 0.34, lerp(-0.9, 0.9, mp), -0.2, [0.85, 0.9, 0.95], 0.3, 1);
-    R.box(lerp(0.34, -0.2, mp) + 0.03, -0.13 + sw * 0.1, -0.22 - sw * 0.1, 0.045, 0.05, 0.12, lerp(-0.9, 0.9, mp), -0.2, [0.12, 0.12, 0.14], 0, 1);
+    const sw = Math.sin(mp * Math.PI), kx = lerp(0.34, -0.2, mp), ky = -0.12 + sw * 0.1, kz = -0.42 - sw * 0.1, yw = lerp(-0.9, 0.9, mp);
+    R.rbox(kx, ky, kz, 0.022, 0.05, 0.34, yw, -0.2, [0.85, 0.9, 0.95], 0.008, 0.2, 1, 1.2);
+    R.rbox(kx + 0.03, ky - 0.01, kz + 0.19, 0.045, 0.05, 0.13, yw, -0.2, [0.1, 0.1, 0.12], 0.02, 0, 1, 0.5);
   }
-  // hands
-  R.box(x + 0.0, y - 0.08 * cp, z + 0.04 + 0.08 * sp2, 0.07, 0.07, 0.1, 0, tilt, skin, 0, 1);
-  R.box(x - 0.02, y - 0.03 + (-0.02) * cp, z - 0.3, 0.07, 0.06, 0.1, 0, tilt, skin, 0, 1);
-  if (t < S.flash) { R.transparent(true); const mz = -0.55 - (id === 'sniper' ? 0.5 : id === 'rifle' ? 0.12 : 0); R.box(x, y + 0.015, z + mz, 0.07, 0.07, 0.12, 0, 0, [1, 0.85, 0.4], 1, 0.9); R.transparent(false); }
+  // gloved hands + sleeves
+  const glove = [0.1, 0.1, 0.11];
+  const h1 = P(0, -0.075, 0.07), h2 = P(-0.02, -0.04, -0.3);
+  R.texture('fabric', 2);
+  R.limb(h1[0] + 0.02, h1[1] - 0.02, h1[2] + 0.04, h1[0] + 0.1, h1[1] - 0.3, h1[2] + 0.5, 0.046, op.suit);
+  R.limb(h2[0], h2[1] - 0.02, h2[2] + 0.04, h2[0] - 0.22, h2[1] - 0.3, h2[2] + 0.45, 0.046, op.suit);
+  R.texture('plain');
+  R.rbox(h1[0], h1[1], h1[2], 0.072, 0.07, 0.11, 0, tilt, glove, 0.028, 0, 1, 0.25);
+  R.rbox(h2[0], h2[1], h2[2], 0.075, 0.062, 0.11, 0, tilt, glove, 0.028, 0, 1, 0.25);
+  R.rbox(h2[0] + 0.036, h2[1] + 0.02, h2[2] - 0.02, 0.03, 0.034, 0.07, 0, tilt, glove, 0.014, 0, 1, 0.25);
+  if (t < S.flash) {
+    R.transparent(true);
+    const mz = -0.55 - (id === 'sniper' ? 0.5 : id === 'rifle' ? 0.12 : 0), f = P(0, 0.015, mz), r = 0.04 + Math.random() * 0.025;
+    R.sphere(f[0], f[1], f[2], r, r, r * 2.4, [1, 0.85, 0.4], 1, 0.9);
+    R.sphere(f[0], f[1], f[2], r * 0.5, r * 0.5, r * 3.4, [1, 1, 0.8], 1, 0.9);
+    R.transparent(false);
+  }
   R.endViewmodel();
 }
 
@@ -724,47 +745,91 @@ const GLEN = { sniper: 0.85, rifle: 0.7, m4: 0.7, aug: 0.58, shotgun: 0.65, moss
 function drawPlayer(pl, t, cam) {
   const op = playerPalette(pl), tm = teamMode(), ti = teamInfo(pl.team);
   const tc = tm ? ti.rgb : op.trim;
+  const cy = Math.cos(pl.ra), sy = Math.sin(pl.ra);
+  const wp = (lx, ly, lz) => [pl.rx + cy * lx + sy * lz, pl.ry + ly, pl.rz - sy * lx + cy * lz];
   if (!pl.al) {
     if (t - pl.deadAt < 4) {                                       // body on the floor
-      const a = pl.ra || 0;
-      R.box(pl.rx, pl.ry + 0.14, pl.rz, 0.5, 0.26, 1.2, a, 0, op.suit, 0, 1);
-      R.box(pl.rx - Math.sin(a) * 0.75, pl.ry + 0.16, pl.rz - Math.cos(a) * 0.75, 0.26, 0.26, 0.26, a, 0, op.skin, 0, 1);
+      const a = pl.ra || 0, dx = -Math.sin(a), dz = -Math.cos(a), sx = Math.cos(a), sz = -Math.sin(a);
+      const X = pl.rx, Y = pl.ry, Z = pl.rz;
+      R.texture('fabric', 2);
+      R.limb(X - dx * 0.2, Y + 0.17, Z - dz * 0.2, X + dx * 0.4, Y + 0.17, Z + dz * 0.4, 0.17, op.suit);
+      R.limb(X - dx * 0.25 + sx * 0.1, Y + 0.1, Z - dz * 0.25 + sz * 0.1, X - dx * 0.95 + sx * 0.2, Y + 0.09, Z - dz * 0.95 + sz * 0.2, 0.08, op.suit);
+      R.limb(X - dx * 0.25 - sx * 0.1, Y + 0.1, Z - dz * 0.25 - sz * 0.1, X - dx * 1.0 - sx * 0.25, Y + 0.09, Z - dz * 1.0 - sz * 0.25, 0.08, op.suit);
+      R.limb(X + dx * 0.35 + sx * 0.2, Y + 0.12, Z + dz * 0.35 + sz * 0.2, X + dx * 0.1 + sx * 0.5, Y + 0.09, Z + dz * 0.1 + sz * 0.5, 0.06, op.suit);
+      R.texture('plain');
+      R.sphere(X + dx * 0.62, Y + 0.14, Z + dz * 0.62, 0.12, 0.13, 0.13, op.skin, 0, 1, 0.1);
     }
     return;
   }
-  const ch = pl.crouch ? 0.64 : 1;
-  const cy = Math.cos(pl.ra), sy = Math.sin(pl.ra);
-  const wp = (lx, ly, lz) => [pl.rx + cy * lx + sy * lz, pl.ry + ly, pl.rz - sy * lx + cy * lz];
+  const ch = pl.crouch ? 0.7 : 1;
   const lean = (pl.lean || 0) * 0.32 * (pl.crouch ? 0.8 : 1);
-  const swing = Math.sin(pl.walk * 3) * Math.min(1, pl.speed / 4) * 0.7;
-  const part = (lx, ly, lz, sx, sy_, sz, col, pitch = 0, emit = 0, alpha = 1) => { const p = wp(lx, ly, lz); R.box(p[0], p[1], p[2], sx, sy_, sz, pl.ra, pitch, col, emit, alpha); };
+  const amp = Math.min(1, pl.speed / 4), ph = pl.walk * 3;
   const flash = (S.flashRemote && S.flashRemote.get(pl.id)) > t;
-  // legs
-  part(-0.13, 0.43 * ch, -swing * 0.12, 0.2, 0.86 * ch, 0.24, op.suit, swing * 0.6);
-  part(0.13, 0.43 * ch, swing * 0.12, 0.2, 0.86 * ch, 0.24, op.suit, -swing * 0.6);
-  // torso + trim
-  part(lean, 1.16 * ch, 0, 0.5, 0.6 * ch, 0.28, op.suit);
-  part(lean, 1.3 * ch, -0.145, 0.34, 0.08, 0.02, op.trim, 0, 0.3);
+  const dark = op.suit.map(c => c * 0.62), boot = [0.08, 0.075, 0.07], glove = [0.1, 0.1, 0.11];
+  const vest = tm ? tc.map(c => c * 0.55 + 0.05) : op.trim.map(c => c * 0.55);
+  // ---- legs: hip -> knee -> foot, swinging with the gait
+  const hipY = 0.93 * ch;
+  R.texture('fabric', 2);
+  for (let i = 0; i < 2; i++) {
+    const side = i ? 0.115 : -0.115, f = ph + i * Math.PI, st = Math.sin(f), lift = Math.max(0, Math.cos(f)) * 0.2 * amp;
+    const hip = wp(side + lean * 0.5, hipY, 0), foot = wp(side, 0.1 + lift, -st * 0.36 * amp);
+    const mx = (hip[0] + foot[0]) / 2, my = (hip[1] + foot[1]) / 2, mz = (hip[2] + foot[2]) / 2;
+    const bend = (pl.crouch ? 0.3 : 0.07) + lift * 0.9 + 0.05 * amp;
+    const knee = [mx - sy * bend, my, mz - cy * bend];                      // knee pushed forward (-z local)
+    R.limb(hip[0], hip[1], hip[2], knee[0], knee[1], knee[2], 0.088, op.suit);
+    R.limb(knee[0], knee[1], knee[2], foot[0], foot[1] + 0.05, foot[2], 0.07, dark);
+    const bf = wp(side, 0.08 + lift, -st * 0.36 * amp - 0.05);
+    R.texture('plain');
+    R.rbox(bf[0], bf[1], bf[2], 0.15, 0.14, 0.3, pl.ra, lift > 0.05 ? 0.25 : 0, boot, 0.05, 0, 1, 0.35);
+    R.texture('fabric', 2);
+  }
+  // ---- torso, vest, belt, pack
+  const tq = wp(lean, 1.17 * ch, 0), pq = wp(lean, 1.2 * ch, 0.21);
+  R.rbox(tq[0], tq[1], tq[2], 0.46, 0.56 * ch, 0.27, pl.ra, 0, op.suit, 0.11);
+  R.texture('plain');
+  const vq = wp(lean, 1.23 * ch, -0.01);
+  R.rbox(vq[0], vq[1], vq[2], 0.5, 0.36 * ch, 0.31, pl.ra, 0, vest, 0.09, tm ? 0.18 : 0, 1, 0.3);
+  const bq = wp(lean * 0.6, 0.93 * ch, 0);
+  R.rbox(bq[0], bq[1], bq[2], 0.48, 0.08, 0.29, pl.ra, 0, [0.07, 0.07, 0.08], 0.03, 0, 1, 0.4);
+  R.rbox(pq[0], pq[1], pq[2], 0.34, 0.42 * ch, 0.14, pl.ra, 0, [0.14, 0.15, 0.13], 0.06, 0, 1, 0.2);
+  const pouch = wp(lean + 0.12, 1.08 * ch, -0.17); R.rbox(pouch[0], pouch[1], pouch[2], 0.14, 0.12, 0.07, pl.ra, 0, [0.12, 0.12, 0.13], 0.03);
+  const neck = wp(lean * 1.2, 1.5 * ch, 0); R.sphere(neck[0], neck[1], neck[2], 0.075, 0.09, 0.075, op.skin, 0, 1, 0.1);
+  // ---- head: skin, helmet, visor
+  const head = wp(lean * 1.4, 1.64 * ch, 0), hy = 1.64 * ch;
+  R.sphere(head[0], head[1], head[2], 0.112, 0.132, 0.12, op.skin, 0, 1, 0.12, pl.ra, pl.rp);
+  const hm = wp(lean * 1.4, hy + 0.045, 0.012);
+  R.sphere(hm[0], hm[1], hm[2], 0.142, 0.115, 0.15, op.suit.map(c => c * 0.8 + 0.04), 0, 1, 0.45, pl.ra, pl.rp);
+  const vz = wp(lean * 1.4, hy + 0.0, -0.1 * Math.cos(pl.rp));
+  R.rbox(vz[0], vz[1] + Math.sin(pl.rp) * 0.1, vz[2], 0.205, 0.062, 0.07, pl.ra, pl.rp, op.visor, 0.028, 0.85, 1, 0.9);
+  // ---- arms + weapon, aimed with pitch about the shoulders
+  const w = WEAPONS[pl.wpn] || WEAPONS.pistol, gl = hex(w.color), gold = pl.wpn === 'golden';
+  const glen = GLEN[pl.wpn] || 0.5, shY = 1.38 * ch, cpp = Math.cos(pl.rp), spp = Math.sin(pl.rp);
+  const A = (lx, ly, lz) => { const dy = ly - shY, dz = lz; return wp(lx, shY + dy * cpp - dz * spp, dy * spp + dz * cpp); };
+  const gy = 1.22 * ch, gz = -0.28 - glen * 0.35;
+  const gunC = A(lean + 0.25, gy, gz), gunB = A(lean + 0.25, gy, gz + glen * 0.3), gunF = A(lean + 0.25, gy + 0.005, gz - glen * 0.5);
+  const body = [0.14, 0.15, 0.17];
+  R.rbox(gunC[0], gunC[1], gunC[2], 0.065, 0.1, glen * 0.7, pl.ra, pl.rp, gold ? [1, 0.8, 0.2] : body, 0.025, gold ? 0.4 : 0, 1, 0.7);
+  R.tube(gunB[0], gunB[1], gunB[2], gunF[0], gunF[1], gunF[2], 0.02, 0.02, gold ? [1, 0.8, 0.2] : [0.07, 0.07, 0.08], 0.7, gold ? 0.4 : 0);
+  const gs = A(lean + 0.25, gy + 0.065, gz); R.rbox(gs[0], gs[1], gs[2], 0.03, 0.035, glen * 0.55, pl.ra, pl.rp, gl, 0.012, 0.25, 1, 0.4);
+  if (glen > 0.4) { const mg = A(lean + 0.25, gy - 0.12, gz + 0.04); R.rbox(mg[0], mg[1], mg[2], 0.045, 0.14, 0.07, pl.ra, pl.rp, [0.1, 0.1, 0.11], 0.02, 0, 1, 0.4); }
+  const handR = A(lean + 0.25, gy - 0.06, gz + glen * 0.28), handL = A(lean + 0.2, gy - 0.02, gz - glen * 0.18);
+  const shR = wp(lean + 0.27, shY, 0), shL = wp(lean - 0.27, shY, 0);
+  const elR = A(lean + 0.33, 1.16 * ch, -0.08), elL = A(lean - 0.12, 1.12 * ch, -0.18);
+  R.texture('fabric', 2);
+  R.limb(shR[0], shR[1], shR[2], elR[0], elR[1], elR[2], 0.065, op.suit); R.limb(elR[0], elR[1], elR[2], handR[0], handR[1], handR[2], 0.055, op.suit);
+  R.limb(shL[0], shL[1], shL[2], elL[0], elL[1], elL[2], 0.065, op.suit); R.limb(elL[0], elL[1], elL[2], handL[0], handL[1], handL[2], 0.055, op.suit);
+  R.texture('plain');
+  R.sphere(handR[0], handR[1], handR[2], 0.052, 0.052, 0.052, glove, 0, 1, 0.2); R.sphere(handL[0], handL[1], handL[2], 0.052, 0.052, 0.052, glove, 0, 1, 0.2);
+  R.sphere(shR[0], shR[1], shR[2], 0.085, 0.085, 0.085, vest, tm ? 0.2 : 0, 1, 0.3); R.sphere(shL[0], shL[1], shL[2], 0.085, 0.085, 0.085, vest, tm ? 0.2 : 0, 1, 0.3);
   // team armband (emissive so it reads at distance)
-  part(lean - 0.31, 1.32 * ch, 0, 0.1, 0.13, 0.2, tc, 0, 0.9);
-  // head + visor
-  part(lean * 1.4, 1.6 * ch, 0, 0.26, 0.27, 0.26, op.skin, pl.rp);
-  part(lean * 1.4, 1.62 * ch, -0.135, 0.22, 0.07, 0.04, op.visor, pl.rp, 0.9);
-  // arms and weapon, pitched with the aim
-  const w = WEAPONS[pl.wpn] || WEAPONS.pistol, gl = hex(w.color);
-  const ay = 1.22 * ch + pl.rp * 0.12;
-  part(lean + 0.3, ay, -0.2, 0.13, 0.13, 0.46, op.suit, pl.rp);
-  part(lean - 0.2, ay - 0.02, -0.3, 0.13, 0.13, 0.42, op.suit, pl.rp);
-  const glen = GLEN[pl.wpn] || 0.5;
-  part(lean + 0.27, ay + 0.02, -0.28 - glen * 0.35, 0.07, 0.1, glen, pl.wpn === 'golden' ? [1, 0.8, 0.2] : [0.14, 0.15, 0.17], pl.rp, pl.wpn === 'golden' ? 0.4 : 0);
-  part(lean + 0.27, ay + 0.07, -0.28 - glen * 0.35, 0.03, 0.04, glen * 0.8, gl, pl.rp, 0.2);
-  if (flash) { const p = wp(lean + 0.27, ay + 0.03, -0.3 - glen); R.box(p[0], p[1], p[2], 0.14, 0.14, 0.14, pl.ra, 0, [1, 0.85, 0.4], 1, 1); }
-  if (t - (pl.meleeAt || -9) < 0.3) { const k = (t - pl.meleeAt) / 0.3; part(lean + 0.45 - k * 0.6, ay, -0.55 - Math.sin(k * Math.PI) * 0.2, 0.04, 0.05, 0.4, [0.85, 0.9, 0.95], pl.rp, 0.3); }
-  if (pl.carry >= 0) { const f = teamInfo(pl.carry).rgb; part(0, 1.35 * ch, 0.2, 0.05, 0.9, 0.05, [0.8, 0.8, 0.8]); part(0.0, 1.7 * ch, 0.2, 0.02, 0.28, 0.4, f, 0, 0.9); }
-  if (pl.gd) part(0, 2.05, 0, 0.18, 0.18, 0.18, [1, 0.8, 0.2], t * 3, 1);
+  const ab = wp(lean - 0.32, 1.3 * ch, -0.02); R.tube(ab[0], ab[1] - 0.06, ab[2], ab[0], ab[1] + 0.07, ab[2], 0.082, 0.082, tc, 0.2, 0.85);
+  if (flash) { const f = A(lean + 0.25, gy + 0.005, gz - glen * 0.5 - 0.08); R.sphere(f[0], f[1], f[2], 0.09, 0.09, 0.14, [1, 0.85, 0.4], 1, 1); }
+  if (t - (pl.meleeAt || -9) < 0.3) { const k = (t - pl.meleeAt) / 0.3, a0 = A(lean + 0.45 - k * 0.6, gy, -0.4 - Math.sin(k * Math.PI) * 0.2), a1 = A(lean + 0.45 - k * 0.6, gy, -0.78 - Math.sin(k * Math.PI) * 0.2); R.tube(a0[0], a0[1], a0[2], a1[0], a1[1], a1[2], 0.02, 0.006, [0.88, 0.92, 0.96], 1.1, 0.3); }
+  if (pl.carry >= 0) { const f = teamInfo(pl.carry).rgb, p0 = wp(0.05, 1.0 * ch, 0.24), p1 = wp(0.05, 2.1 * ch, 0.24), cl = wp(0.05, 1.85 * ch, 0.24); R.tube(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], 0.018, 0.018, [0.8, 0.8, 0.82], 0.8); R.rbox(cl[0], cl[1], cl[2], 0.03, 0.34, 0.5, pl.ra, 0, f, 0.012, 0.9); }
+  if (pl.gd) R.sphere(pl.rx, pl.ry + 2.1, pl.rz, 0.11, 0.11, 0.11, [1, 0.8, 0.2], 1, 1, 0.9);
 }
 
-function beam(x, y, z, h, col, a = 0.22, wd = 0.35) { R.box(x, y + h / 2, z, wd, h, wd, 0, 0, col, 1, a); }
+function beam(x, y, z, h, col, a = 0.22, wd = 0.35) { R.tube(x, y, z, x, y + h, z, wd / 2, wd / 2, col, 0, 1, a); }
 
 function drawWorldObjects(t, cam) {
   const mp = game.map; if (!mp || game.view !== 'match') return;
@@ -773,14 +838,21 @@ function drawWorldObjects(t, cam) {
   mp.pickups.forEach((p, i) => {
     if (S.pk[i] !== '1') return;
     const kind = S.pkKinds[i], col = hex(PICKUP_COLORS[kind] || '#fff'), y = p.y + 0.85 + Math.sin(t * 2 + i) * 0.09;
-    if (WEAPONS[kind]) { R.box(p.x, y, p.z, 0.2, 0.2, 0.9, spin, 0, col, 0.55, 1); R.box(p.x, y, p.z, 0.2, 0.5, 0.2, spin, 0, [0.15, 0.15, 0.18], 0.1, 1); }
-    else if (kind === 'health') { R.box(p.x, y, p.z, 0.5, 0.15, 0.5, spin, 0, [0.95, 0.95, 0.95], 0.5, 1); R.box(p.x, y, p.z, 0.4, 0.2, 0.12, spin, 0, col, 0.8, 1); R.box(p.x, y, p.z, 0.12, 0.2, 0.4, spin, 0, col, 0.8, 1); }
-    else if (kind === 'armor') { R.box(p.x, y, p.z, 0.5, 0.55, 0.14, spin, 0, col, 0.6, 1); }
-    else if (kind === 'ammo') { R.box(p.x, y, p.z, 0.42, 0.28, 0.3, spin, 0.3, col, 0.55, 1); }
-    else if (kind === 'laser') { R.box(p.x, y, p.z, 0.4, 0.14, 0.2, spin, 0, [0.2, 0.2, 0.24], 0.1, 1); R.box(p.x, y + 0.02, p.z, 0.08, 0.08, 0.3, spin, 0, col, 1, 1); }
-    else if (kind === 'knives') { for (let k = -1; k <= 1; k++) R.box(p.x + Math.cos(spin) * k * 0.12, y, p.z - Math.sin(spin) * k * 0.12, 0.03, 0.05, 0.4, spin, 0, [0.85, 0.9, 0.95], 0.35, 1); }
-    else if (kind === 'mines') { R.box(p.x, y, p.z, 0.45, 0.1, 0.45, spin, 0, col, 0.7, 1); R.box(p.x, y + 0.08, p.z, 0.15, 0.08, 0.15, spin, 0, [1, 0.3, 0.2], 1, 1); }
-    R.box(p.x, p.y + 0.03, p.z, 0.8, 0.04, 0.8, spin * 0.5, 0, col, 1, 1);
+    const sc = Math.cos(spin), ss = Math.sin(spin);                                // spin direction (local +x -> world)
+    if (WEAPONS[kind]) {
+      const f = [-ss * 0.42, 0, -sc * 0.42], b = [ss * 0.42, 0, sc * 0.42];
+      R.rbox(p.x, y, p.z, 0.12, 0.17, 0.62, spin, 0, [0.15, 0.16, 0.19], 0.045, 0.15, 1, 0.8);
+      R.tube(p.x + f[0] * 0.8, y + 0.03, p.z + f[2] * 0.8, p.x + f[0] * 1.9, y + 0.03, p.z + f[2] * 1.9, 0.025, 0.025, col, 0.6, 0.6);
+      R.rbox(p.x + b[0] * 0.9, y - 0.02, p.z + b[2] * 0.9, 0.08, 0.14, 0.22, spin, 0, col, 0.05, 0.55, 1, 0.5);
+      R.rbox(p.x - ss * 0.08, y - 0.17, p.z - sc * 0.08, 0.06, 0.2, 0.08, spin, 0, [0.12, 0.12, 0.14], 0.025, 0.1);
+    }
+    else if (kind === 'health') { R.rbox(p.x, y, p.z, 0.46, 0.34, 0.2, spin, 0, [0.94, 0.94, 0.94], 0.06, 0.5, 1, 0.5); R.rbox(p.x, y, p.z, 0.3, 0.1, 0.22, spin, 0, col, 0.02, 0.9); R.rbox(p.x, y, p.z, 0.1, 0.3, 0.22, spin, 0, col, 0.02, 0.9); }
+    else if (kind === 'armor') { R.rbox(p.x, y, p.z, 0.46, 0.52, 0.16, spin, 0, col, 0.12, 0.6, 1, 0.7); R.rbox(p.x, y + 0.02, p.z, 0.3, 0.34, 0.2, spin, 0, col.map(c => c * 0.5), 0.08, 0.2, 1, 0.5); }
+    else if (kind === 'ammo') { R.rbox(p.x, y, p.z, 0.42, 0.26, 0.28, spin, 0.2, [0.22, 0.24, 0.18], 0.04, 0.2, 1, 0.3); R.rbox(p.x, y + 0.13, p.z, 0.44, 0.04, 0.12, spin, 0.2, col, 0.015, 0.8); for (let k = -1; k <= 1; k++) R.tube(p.x + sc * k * 0.12, y + 0.14, p.z - ss * k * 0.12, p.x + sc * k * 0.12, y + 0.27, p.z - ss * k * 0.12, 0.035, 0.035, [0.9, 0.7, 0.3], 0.9, 0.2); }
+    else if (kind === 'laser') { R.rbox(p.x, y, p.z, 0.36, 0.12, 0.18, spin, 0, [0.2, 0.2, 0.24], 0.04, 0.1, 1, 0.6); R.sphere(p.x - ss * 0.09, y + 0.07, p.z - sc * 0.09, 0.04, 0.04, 0.04, col, 1); R.tube(p.x - ss * 0.1, y + 0.07, p.z - sc * 0.1, p.x - ss * 0.5, y + 0.07, p.z - sc * 0.5, 0.012, 0.012, col, 0, 1, 0.8); }
+    else if (kind === 'knives') { for (let k = -1; k <= 1; k++) { const ox = sc * k * 0.12, oz = -ss * k * 0.12; R.tube(p.x + ox + ss * 0.0, y, p.z + oz, p.x + ox - ss * 0.0 - ss * 0.26, y, p.z + oz - sc * 0.26, 0.025, 0.006, [0.88, 0.92, 0.96], 1, 0.35); R.tube(p.x + ox, y, p.z + oz, p.x + ox + ss * 0.16, y, p.z + oz + sc * 0.16, 0.02, 0.02, [0.12, 0.12, 0.14], 0.4); } }
+    else if (kind === 'mines') { R.tube(p.x, y - 0.03, p.z, p.x, y + 0.03, p.z, 0.22, 0.2, [0.2, 0.2, 0.24], 0.6, 0.15); R.sphere(p.x, y + 0.05, p.z, 0.07, 0.04, 0.07, [1, 0.3, 0.2], 1); }
+    R.tube(p.x, p.y + 0.02, p.z, p.x, p.y + 0.05, p.z, 0.46, 0.46, col, 0, 1);
   });
   // proximity mines
   for (const m of S.minesWorld) {
@@ -789,8 +861,8 @@ function drawWorldObjects(t, cam) {
     const col = own || !teamMode() && m[8] === game.myId ? [0.2, 1, 0.5] : [1, 0.25, 0.2];
     const nx = m[4], ny = m[5], nz = m[6];
     const px = m[1] + nx * 0.05, py = m[2] + ny * 0.05, pz = m[3] + nz * 0.05;
-    R.box(px, py, pz, Math.abs(nx) > 0.5 ? 0.1 : 0.3, Math.abs(ny) > 0.5 ? 0.1 : 0.3, Math.abs(nz) > 0.5 ? 0.1 : 0.3, 0, 0, [0.2, 0.21, 0.24], 0, 1);
-    R.box(px + nx * 0.06, py + ny * 0.06, pz + nz * 0.06, 0.07, 0.07, 0.07, 0, 0, col, blink, 1);
+    R.tube(px, py, pz, px + nx * 0.09, py + ny * 0.09, pz + nz * 0.09, 0.16, 0.14, [0.2, 0.21, 0.24], 0.6);
+    R.sphere(px + nx * 0.1, py + ny * 0.1, pz + nz * 0.1, 0.045, 0.045, 0.045, col, blink);
   }
   // rockets + thrown knives (extrapolated between snapshots)
   const dtp = Math.min(0.12, t - S.pjT);
@@ -798,11 +870,12 @@ function drawWorldObjects(t, cam) {
     const knife = q[1] === 1, vx = q[5], vy = q[6], vz = q[7], sp = Math.hypot(vx, vy, vz) || 1;
     const px = q[2] + vx * dtp, py = q[3] + vy * dtp - (knife ? 0.5 * GADGETS.knife.gravity * dtp * dtp : 0), pz = q[4] + vz * dtp;
     const yaw = Math.atan2(-vx, -vz), pitch = Math.asin(clamp(vy / sp, -1, 1)), dx = vx / sp, dy = vy / sp, dz = vz / sp;
-    if (knife) { R.box(px, py, pz, 0.05, 0.05, 0.36, yaw, pitch, [0.88, 0.92, 0.96], 0.4, 1); R.box(px - dx * 0.25, py - dy * 0.25, pz - dz * 0.25, 0.07, 0.07, 0.14, yaw, pitch, [0.12, 0.12, 0.14], 0, 1); }
+    if (knife) { R.tube(px + dx * 0.18, py + dy * 0.18, pz + dz * 0.18, px - dx * 0.1, py - dy * 0.1, pz - dz * 0.1, 0.022, 0.022, [0.88, 0.92, 0.96], 1.1, 0.3); R.tube(px + dx * 0.4, py + dy * 0.4, pz + dz * 0.4, px + dx * 0.18, py + dy * 0.18, pz + dz * 0.18, 0.004, 0.022, [0.88, 0.92, 0.96], 1.1, 0.3); R.tube(px - dx * 0.1, py - dy * 0.1, pz - dz * 0.1, px - dx * 0.3, py - dy * 0.3, pz - dz * 0.3, 0.025, 0.025, [0.1, 0.1, 0.12], 0.4); }
     else {
-      R.box(px, py, pz, 0.16, 0.16, 0.7, yaw, pitch, [0.35, 0.38, 0.3], 0.1, 1);
-      R.box(px + dx * 0.4, py + dy * 0.4, pz + dz * 0.4, 0.12, 0.12, 0.16, yaw, pitch, [1, 0.35, 0.2], 0.6, 1);
-      R.box(px - dx * 0.5, py - dy * 0.5, pz - dz * 0.5, 0.22, 0.22, 0.3, yaw, pitch, [1, 0.8, 0.3], 1, 1);
+      R.tube(px - dx * 0.35, py - dy * 0.35, pz - dz * 0.35, px + dx * 0.25, py + dy * 0.25, pz + dz * 0.25, 0.075, 0.075, [0.36, 0.4, 0.3], 0.5, 0.1);
+      R.tube(px + dx * 0.25, py + dy * 0.25, pz + dz * 0.25, px + dx * 0.5, py + dy * 0.5, pz + dz * 0.5, 0.075, 0.012, [1, 0.35, 0.2], 0.5, 0.5);
+      R.tube(px - dx * 0.35, py - dy * 0.35, pz - dz * 0.35, px - dx * 0.5, py - dy * 0.5, pz - dz * 0.5, 0.05, 0.085, [0.15, 0.15, 0.16], 0.4);
+      R.sphere(px - dx * 0.6, py - dy * 0.6, pz - dz * 0.6, 0.12, 0.12, 0.12, [1, 0.8, 0.3], 1);
       if (Math.random() < 0.8) spark([px - dx * 0.6, py - dy * 0.6, pz - dz * 0.6], 1, [1, 0.6, 0.25], 1.5);
     }
   }
@@ -810,14 +883,14 @@ function drawWorldObjects(t, cam) {
   for (const L of S.lz) {
     const own = teamMode() ? L[8] === S.team : L[9] === game.myId, armed = L[10] === 1;
     const nx = L[4], ny = L[5], nz = L[6];
-    R.box(L[1] - nx * 0.03, L[2] - ny * 0.03, L[3] - nz * 0.03, Math.abs(nx) > 0.5 ? 0.1 : 0.28, Math.abs(ny) > 0.5 ? 0.1 : 0.28, Math.abs(nz) > 0.5 ? 0.1 : 0.28, 0, 0, [0.2, 0.21, 0.24], 0, 1);
-    R.box(L[1] + nx * 0.04, L[2] + ny * 0.04, L[3] + nz * 0.04, 0.06, 0.06, 0.06, 0, 0, own ? [0.2, 1, 0.5] : [1, 0.2, 0.2], armed ? 1 : (Math.sin(t * 10) > 0 ? 1 : 0.2), 1);
+    R.tube(L[1] - nx * 0.01, L[2] - ny * 0.01, L[3] - nz * 0.01, L[1] + nx * 0.07, L[2] + ny * 0.07, L[3] + nz * 0.07, 0.13, 0.11, [0.2, 0.21, 0.24], 0.6);
+    R.sphere(L[1] + nx * 0.08, L[2] + ny * 0.08, L[3] + nz * 0.08, 0.04, 0.04, 0.04, own ? [0.2, 1, 0.5] : [1, 0.2, 0.2], armed ? 1 : (Math.sin(t * 10) > 0 ? 1 : 0.2));
   }
   // CTF flags
   if (S.flags) S.flags.forEach((f, i) => {
     const col = teamInfo(i).rgb, [st, carrier, x, y, z] = f;
-    if (st !== 1) { R.box(x, y + 0.9, z, 0.06, 1.8, 0.06, 0, 0, [0.85, 0.85, 0.88], 0, 1); R.box(x + Math.sin(t * 3 + i) * 0.04, y + 1.55, z - 0.4, 0.04, 0.5, 0.8, 0, 0, col, 0.85, 1); }
-    if (st === 0) { const hm = mp.flags[i]; R.box(hm.x, hm.y + 0.04, hm.z, 2.2, 0.06, 2.2, 0, 0, col, 1, 1); }
+    if (st !== 1) { R.tube(x, y, z, x, y + 1.9, z, 0.03, 0.03, [0.85, 0.85, 0.88], 0.8); R.sphere(x, y + 1.92, z, 0.05, 0.05, 0.05, [0.9, 0.8, 0.3], 0, 1, 1); for (let k = 0; k < 4; k++) R.rbox(x, y + 1.7 - k * 0.0 + Math.sin(t * 4 + i + k) * 0.015, z - 0.14 - k * 0.2, 0.03, 0.5 - k * 0.04, 0.22, 0, 0, col, 0.01, 0.85); }
+    if (st === 0) { const hm = mp.flags[i]; R.tube(hm.x, hm.y + 0.02, hm.z, hm.x, hm.y + 0.07, hm.z, 1.25, 1.25, col, 0, 1); }
   });
   // hill ring
   if (game.mode === 'koth') {
@@ -827,10 +900,10 @@ function drawWorldObjects(t, cam) {
   }
   // golden gun
   if (game.mode === 'gg' && S.goldenW && S.goldenW[0] == null) {
-    const g = S.goldenW; R.box(g[1], g[3] + 0.9 + Math.sin(t * 2) * 0.1, g[2], 0.2, 0.2, 0.8, spin, 0, [1, 0.8, 0.2], 0.8, 1);
+    const g = S.goldenW; R.rbox(g[1], g[3] + 0.9 + Math.sin(t * 2) * 0.1, g[2], 0.12, 0.2, 0.7, spin, 0, [1, 0.8, 0.2], 0.05, 0.8, 1, 1);
   }
   // intel tokens
-  for (const k of S.tokens) { const col = teamInfo(k[4]).rgb; R.box(k[1], k[2] + 0.6 + Math.sin(t * 3) * 0.08, k[3], 0.28, 0.28, 0.28, spin * 2, 0.7, col, 0.9, 1); }
+  for (const k of S.tokens) { const col = teamInfo(k[4]).rgb; R.rbox(k[1], k[2] + 0.6 + Math.sin(t * 3) * 0.08, k[3], 0.3, 0.2, 0.4, spin * 2, 0.3, col, 0.07, 0.9, 1, 0.8); }
 }
 
 function drawTransparent(t, cam) {
@@ -841,18 +914,19 @@ function drawTransparent(t, cam) {
   if (game.mode === 'gg' && S.goldenW && S.goldenW[0] == null) beam(S.goldenW[1], S.goldenW[3], S.goldenW[2], 14, [1, 0.8, 0.2], 0.25, 0.4);
   mp.pickups.forEach((p, i) => { if (S.pk[i] === '1') { const kind = S.pkKinds[i]; if (WEAPONS[kind]) beam(p.x, p.y, p.z, 3, hex(PICKUP_COLORS[kind]), 0.15, 0.3); } });
   for (const c of S.calls) { const css = CALLS.find(x => x.k === c.k).css; beam(c.p[0], c.p[1], c.p[2], 5, hex(css), 0.22 * Math.min(1, (CALL_LIFE - (t - c.t)) / 1.5), 0.18); }
+  for (const pl of S.players.values()) if (pl.al && pl.id !== game.myId) R.blob(pl.rx, pl.ry, pl.rz, pl.crouch ? 0.55 : 0.5, 0.42);
   // protection shimmer on spawn-protected players
   for (const pl of S.players.values()) {
     if (pl.id === game.myId || !pl.al || !pl.prot) continue;
     const p = 0.28 + Math.sin(t * 12) * 0.08;
-    R.box(pl.rx, pl.ry + 0.95, pl.rz, 0.95, 2.0, 0.95, t, 0, [0.5, 0.9, 1], 1, p);
+    R.sphere(pl.rx, pl.ry + 0.95, pl.rz, 0.62, 1.05, 0.62, [0.5, 0.9, 1], 1, p);
   }
   // laser mine beams
   for (const L of S.lz) {
     const own = teamMode() ? L[8] === S.team : L[9] === game.myId, armed = L[10] === 1;
     const nx = L[4], ny = L[5], nz = L[6], len = L[7];
     const a = armed ? 0.6 + Math.sin(t * 22) * 0.12 : 0.1;
-    R.box(L[1] + nx * len / 2, L[2] + ny * len / 2, L[3] + nz * len / 2, armed ? 0.03 : 0.015, armed ? 0.03 : 0.015, len, Math.atan2(-nx, -nz), Math.asin(clamp(ny, -1, 1)), own ? [0.3, 1, 0.55] : [1, 0.15, 0.15], 1, a);
+    R.tube(L[1], L[2], L[3], L[1] + nx * len, L[2] + ny * len, L[3] + nz * len, armed ? 0.016 : 0.008, armed ? 0.016 : 0.008, own ? [0.3, 1, 0.55] : [1, 0.15, 0.15], 0, 1, a);
   }
   // tracers
   for (let i = S.tracers.length - 1; i >= 0; i--) {
@@ -860,15 +934,16 @@ function drawTransparent(t, cam) {
     if (age > tr.life) { S.tracers.splice(i, 1); continue; }
     const dx = tr.b[0] - tr.a[0], dy = tr.b[1] - tr.a[1], dz = tr.b[2] - tr.a[2], len = Math.hypot(dx, dy, dz);
     const yaw = Math.atan2(-dx, -dz), pitch = Math.asin(dy / len);
-    R.box((tr.a[0] + tr.b[0]) / 2, (tr.a[1] + tr.b[1]) / 2, (tr.a[2] + tr.b[2]) / 2, tr.w, tr.w, len, yaw, pitch, tr.col, 1, (1 - age / tr.life) * 0.85);
+    R.tube(tr.a[0], tr.a[1], tr.a[2], tr.b[0], tr.b[1], tr.b[2], tr.w / 2, tr.w / 2, tr.col, 0, 1, (1 - age / tr.life) * 0.85);
   }
   // explosions
   for (let i = S.booms.length - 1; i >= 0; i--) {
     const b = S.booms[i], k = (t - b.t) / b.life;
     if (k > 1) { S.booms.splice(i, 1); continue; }
     const s = (1 + k * 8) * (b.sc || 1), a = (1 - k) * 0.7;
-    R.box(b.x, b.y, b.z, s, s, s, k * 2, k, [1, 0.55, 0.15], 1, a * 0.6);
-    R.box(b.x, b.y, b.z, s * 0.6, s * 0.6, s * 0.6, -k * 3, k * 2, [1, 0.9, 0.5], 1, a);
+    R.sphere(b.x, b.y, b.z, s / 2, s / 2 * (0.8 + k * 0.3), s / 2, [1, 0.5, 0.12], 1, a * 0.6);
+    R.sphere(b.x, b.y - s * 0.05, b.z, s * 0.3, s * 0.3, s * 0.3, [1, 0.9, 0.5], 1, a);
+    R.sphere(b.x, b.y + s * 0.25 * k, b.z, s * 0.55, s * 0.4, s * 0.55, [0.2, 0.18, 0.16], 0, a * 0.35 * k);
   }
   // sparks
   const dts = 1 / 60;
@@ -876,7 +951,7 @@ function drawTransparent(t, cam) {
     const s = S.sparks[i], age = t - s.t;
     if (age > s.life) { S.sparks.splice(i, 1); continue; }
     s.vy -= 14 * dts; s.x += s.vx * dts; s.y += s.vy * dts; s.z += s.vz * dts;
-    R.box(s.x, s.y, s.z, 0.06, 0.06, 0.06, age * 9, age * 7, s.col, 1, 1 - age / s.life);
+    R.sphere(s.x, s.y, s.z, 0.035, 0.035, 0.035, s.col, 1, 1 - age / s.life);
   }
   // rain
   if (S.weather === 'rain' && S.rain) {
@@ -899,7 +974,7 @@ function drawTransparent(t, cam) {
 function render(t, dt) {
   const cam = computeCamera(dt, t);
   S.cam = cam;
-  R.begin(cam, { brightness: settings.gfx.brightness, weather: S.weather, fogScale: settings.gfx.fogScale });
+  R.begin(cam, { brightness: settings.gfx.brightness, weather: S.weather, fogScale: settings.gfx.fogScale, time: t, shadowQuality: settings.gfx.quality === 'low' ? 0 : 1 });
   if (game.view === 'match') {
     for (const pl of S.players.values()) {
       if (pl.id === game.myId || cam.killcam === pl.id) continue;
