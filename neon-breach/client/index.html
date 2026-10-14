@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#07090d">
+<title>Neon Breach</title>
+<meta name="description" content="Neon Breach — an original online tactical arena shooter. Six modes, four arenas, bots, and up to eight operators per room.">
+<link rel="icon" href="/brand/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-view="menu">
+<canvas id="gl"></canvas>
+<canvas id="hud"></canvas>
+<canvas id="minimap"></canvas>
+
+<!-- ============================ in-match HUD ============================ -->
+<div id="hud-root" class="hidden">
+  <div id="h-top">
+    <div class="h-side"><span id="h-nameA" class="h-name"></span><b id="h-scoreA" class="h-score">0</b></div>
+    <div id="h-mid"><div id="h-timer">0:00</div><div id="h-limit"></div></div>
+    <div class="h-side right"><b id="h-scoreB" class="h-score">0</b><span id="h-nameB" class="h-name"></span></div>
+  </div>
+  <div id="h-objective"></div>
+  <div id="h-feed"></div>
+  <div id="h-banner"></div>
+  <div id="h-toast"></div>
+  <div id="h-countdown" class="hidden">3</div>
+  <div id="h-prot" class="hidden">SPAWN PROTECTED</div>
+  <div id="h-dead" class="hidden"><div id="h-dead-msg">YOU DIED</div><div class="sub">Respawning…</div></div>
+  <div id="h-vitals">
+    <div class="bar"><label>HEALTH</label><div class="track"><i id="h-hpbar"></i></div><b id="h-hp">100</b></div>
+    <div class="bar armor"><label>ARMOR</label><div class="track"><i id="h-armorbar"></i></div><b id="h-armor">0</b></div>
+    <div id="h-ping"></div>
+  </div>
+  <div id="h-weapon">
+    <div id="h-slots"></div>
+    <div id="h-wpn"></div>
+    <div class="ammo"><b id="h-mag">0</b><span>/</span><em id="h-reserve">∞</em></div>
+    <div id="h-mines">MINES 2</div>
+  </div>
+  <div id="callwheel" class="hidden"><div class="cw-ring"></div><div id="cw-knob"></div><div id="cw-label">Ping</div></div>
+  <div id="scoreboard" class="hidden"><h3 id="sb-title"></h3><div id="scoreboard-body"></div></div>
+</div>
+
+<!-- ============================ main menu ============================ -->
+<section id="screen-menu" class="screen">
+  <div class="menu-card">
+    <div class="brand">
+      <img src="/brand/mark.svg" alt="" width="64" height="64">
+      <div><h1>NEON BREACH</h1><p>Tactical arena shooter · 6 modes · 4 arenas · up to 8 operators</p></div>
+    </div>
+
+    <div class="row">
+      <label class="field grow"><span>Codename</span><input id="in-name" maxlength="14" autocomplete="off" spellcheck="false" placeholder="2–14 letters, digits, _ or -"></label>
+    </div>
+
+    <div class="row">
+      <button id="btn-quick" class="btn primary big">Play now <small>join the busiest public match</small></button>
+    </div>
+
+    <h2>Server browser</h2>
+    <table class="browser">
+      <thead><tr><th>Room</th><th>Map</th><th>Mode</th><th>Players</th><th>Time</th><th></th></tr></thead>
+      <tbody id="browser-body"><tr><td colspan="6" class="dim">Loading rooms…</td></tr></tbody>
+    </table>
+    <p class="hint">Public rooms run around the clock. Bots hold the empty slots and step aside when someone joins.</p>
+
+    <h2>Play with friends</h2>
+    <div class="row">
+      <button id="btn-create" class="btn">Create room</button>
+      <span class="or">or</span>
+      <input id="in-code" class="code" maxlength="4" autocomplete="off" spellcheck="false" placeholder="CODE">
+      <button id="btn-join" class="btn">Join</button>
+      <span class="grow"></span>
+      <button id="btn-settings" class="btn ghost">Settings</button>
+    </div>
+    <p id="menu-err" class="err hidden"></p>
+
+    <details class="how">
+      <summary>Controls</summary>
+      <p><b>Mouse &amp; keyboard</b> — WASD move · mouse aim · click fire · right-click aim down sights · R reload · F proximity mine · T laser mine · X throw knife · V melee · Q/E lean · C crouch · Space jump · 1–6 or wheel switch weapon · hold G for the callout wheel (team modes) · Tab scoreboard. Everything is rebindable in Settings.</p>
+      <p><b>Controller</b> — Left stick move · right stick aim · LT aim · RT fire · A jump · B crouch · X reload · Y switch weapon · LB proximity mine · RB throwing knife · left-stick click laser mine · right-stick click melee · D-pad left-right lean · D-pad up callout wheel · View scoreboard · Menu pause.</p>
+      <p><b>Briefing</b> — Grab rifles, armor and medkits around the arena. Proximity mines stick to any surface and detonate when an enemy walks past; laser mines project a beam that blows when it is crossed (3 at a time). Knives can be thrown or used up close — strike from behind to kill instantly. The rocket launcher has splash damage, so mind your own feet. In Capture the Flag, carry the enemy flag home while yours is safe. In Intel Recovery every fallen operator drops intel: collect theirs to score, grab your own to deny it. Fresh spawns are protected for a moment — a shimmer marks them.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ============================ staging area ============================ -->
+<section id="screen-lobby" class="screen hidden">
+  <div class="lobby-card">
+    <header>
+      <div><span class="eyebrow">Staging area</span><h2>Room <b id="lb-code">----</b></h2></div>
+      <div class="row"><span id="lb-role" class="pill"></span><button id="btn-copy" class="btn">Copy invite link</button></div>
+    </header>
+    <div class="lobby-grid">
+      <div class="panel" id="lb-cfg">
+        <label class="field"><span>Map</span><select id="cf-map"></select></label>
+        <p id="cf-mapdesc" class="hint"></p>
+        <label class="field"><span>Mode</span><select id="cf-mode"></select></label>
+        <p id="cf-modedesc" class="hint"></p>
+        <label class="field"><span id="cf-limitlabel">Limit</span><select id="cf-limit"></select></label>
+        <label class="field"><span>Time limit</span><select id="cf-time"></select></label>
+        <label class="field"><span>Bot teammates &amp; opponents</span><select id="cf-bots"></select></label>
+        <div class="two">
+          <label class="field"><span>Weather</span><select id="cf-weather"><option value="clear">Clear</option><option value="rain">Rain</option></select></label>
+          <label class="field"><span>Item spawns</span><select id="cf-items"><option value="random">Random each match</option><option value="classic">Classic (fixed)</option></select></label>
+        </div>
+        <label class="field"><span>Loadout</span><select id="cf-loadout"><option value="arsenal">Arsenal — carry everything you pick up</option><option value="tactical">Tactical — 1 sidearm + 2 primaries + mines</option></select></label>
+      </div>
+      <div class="panel">
+        <div class="rosterhead"><span>Operators</span><b id="lb-count">0 / 8</b></div>
+        <div id="lb-teams"></div>
+        <p class="hint" id="lb-teamhint">Teams stay within one player of each other. Switch while in the lobby.</p>
+        <h3>Operator</h3>
+        <div id="op-grid"></div>
+        <div class="row end">
+          <button id="btn-lb-settings" class="btn ghost">Settings</button>
+          <button id="btn-leave" class="btn">Leave</button>
+          <button id="btn-start" class="btn primary">Start match</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ overlays ============================ -->
+<div id="deploy" class="overlay hidden"><div class="box center"><h2>CLICK TO DEPLOY</h2><p>Mouse will be captured · press Esc to release it</p></div></div>
+
+<div id="pause" class="overlay hidden"><div class="box">
+  <img src="/brand/mark.svg" alt="" width="40" height="40"><span class="eyebrow">Paused · the match continues</span>
+  <h2 id="pause-mode"></h2>
+  <button id="btn-resume" class="btn primary">Resume</button>
+  <button id="btn-pause-settings" class="btn">Settings</button>
+  <button id="btn-pause-leave" class="btn">Return to menu</button>
+</div></div>
+
+<div id="end" class="overlay hidden"><div class="box wide">
+  <span class="eyebrow">Neon Breach · Match complete</span>
+  <h2 id="end-title">MATCH COMPLETE</h2>
+  <div id="end-board"></div>
+  <div id="vote" class="hidden"><h3>Vote for the next map</h3><div id="vote-cards"></div><p id="vote-timer" class="hint"></p></div>
+  <p id="end-next" class="hint"></p>
+  <div class="row end">
+    <button id="btn-shot" class="btn ghost">Screenshot</button>
+    <button id="btn-rematch" class="btn primary hidden">Rematch</button>
+    <button id="btn-end-leave" class="btn">Return to menu</button>
+  </div>
+</div></div>
+
+<div id="settings" class="overlay hidden"><div class="box wide settings-box">
+  <header><h2>Settings</h2><button id="btn-settings-close" class="btn">Close · Esc</button></header>
+  <p class="hint">Changes apply immediately and are saved on this device.</p>
+  <nav id="set-tabs"></nav>
+  <div id="set-body"></div>
+  <div class="row end"><button id="btn-set-reset" class="btn ghost">Reset this tab</button></div>
+</div></div>
+
+<div id="disc" class="overlay hidden"><div class="box center"><span class="eyebrow">Signal lost</span><h2>Disconnected from the server</h2><p>The connection dropped. Head back to the menu and rejoin with the room code.</p><button id="btn-disc" class="btn primary">Back to menu</button></div></div>
+
+<div id="fatal" class="overlay hidden"><div class="box center"><h2>Can't start the game</h2><p id="fatal-msg"></p></div></div>
+
+<div id="loading"><img src="/brand/mark.svg" alt="" width="72" height="72"><div class="bar"><i></i></div><span>Loading…</span></div>
+
+<script type="module" src="/main.js"></script>
+</body>
+</html>
