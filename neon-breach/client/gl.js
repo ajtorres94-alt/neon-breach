@@ -52,6 +52,8 @@ export const MATERIALS = {
 };
 
 // strength of the shader micro-relief per map material
+// glossiness per map material (uSpec): sun glint, fresnel reflection of the sky, dynamic-light highlights
+const SPEC = { metal: 0.55, rust: 0.18, marble: 0.5, floor: 0.3, dark: 0.35, accent: 0.4, asphalt: 0.12, stone: 0.12, concrete: 0.08, blue: 0.4, red: 0.4, olive: 0.3, leaf: 0.1, hedge: 0.06, wood: 0.1, brick: 0.06 };
 const MICRO = { rock: 0.7, hedge: 0.6, leaf: 0.6, wood: 0.55, grass: 0.4, dirt: 0.55, sand: 0.45, stone: 0.4, brick: 0.35, concrete: 0.4, marble: 0.2, wall: 0.3, metal: 0.25, rust: 0.4, crate: 0.3, floor: 0.2, asphalt: 0.5, plain: 0.3, hay: 0.5 };
 
 const VS = `
@@ -128,8 +130,8 @@ void main(){
   float wrap = smoothstep(0.12, 0.82, dot(n, L) * 0.55 + 0.45);
   vec3 amb = mix(uGnd, uSky, 0.5 + 0.5 * n.y);
   vec3 shade = amb * vec3(0.92, 0.97, 1.08);
-  vec3 sunl = uSunCol * vec3(1.06, 1.0, 0.9) * wrap * mix(0.35, 1.0, sh);
-  vec3 lit = (shade * 0.92 + sunl * (0.55 + 0.45 * sh) * 0.8) * uLight;
+  vec3 sunl = uSunCol * vec3(1.06, 1.0, 0.9) * wrap * mix(0.27, 1.0, sh);          // +30% sun intensity and +30% shadow contrast over the previous grade
+  vec3 lit = (shade * 0.92 + sunl * (0.42 + 0.58 * sh) * 1.04) * uLight;
   vec3 col = base * lit * uBright;
   vec3 V = normalize(uCam - vWorld);
   vec3 dyn = vec3(0.0);
@@ -145,12 +147,16 @@ void main(){
     if (uSpec > 0.0) c += lc * att * cone * pow(max(dot(n, normalize(ld + V)), 0.0), 28.0) * uSpec * 0.9;
     dyn += c;
   }
-  dyn = min(dyn, vec3(0.75));
-  col += base * dyn * 1.0 * uBright + dyn * 0.025 * uBright;
+  dyn = min(dyn * 1.3, vec3(0.98));                                                   // +30% dynamic light
+  col += base * dyn * 1.0 * uBright + dyn * 0.03 * uBright;
   if (uSpec > 0.0) {
     vec3 H = normalize(L + V);
     col += uSunCol * pow(max(dot(n, H), 0.0), 36.0) * uSpec * (0.25 + 0.75 * sh) * uBright;
-    col += uSky * pow(1.0 - max(dot(n, V), 0.0), 3.0) * uSpec * 0.25 * uBright;       // rim sheen
+    float ndv = max(dot(n, V), 0.0);
+    vec3 Rv = reflect(-V, n);                                                         // image-based-lighting stand-in: reflect the view into a sky/ground gradient with a sun glint
+    vec3 env = mix(uGnd * 0.8, uSky * 1.35, smoothstep(-0.15, 0.45, Rv.y)) + uSunCol * pow(max(dot(Rv, L), 0.0), 48.0) * 2.0;
+    float fres = 0.04 + 0.7 * pow(1.0 - ndv, 5.0);                                     // Schlick fresnel
+    col += env * fres * uSpec * 0.55 * (0.35 + 0.65 * sh) * uBright;
   }
   if (uRim > 0.0) {                                                                   // TF2-style rim light
     float rim = pow(1.0 - max(dot(n, V), 0.0), 2.6) * smoothstep(-0.2, 0.6, dot(n, L) + 0.35);
@@ -158,12 +164,16 @@ void main(){
   }
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, 1.14);                                                    // colour grade: richer saturation
+  { vec3 x = col * 1.12;                                                              // filmic tone-map (ACES fit): rolls off highlights, deepens shadows
+    col = clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
   col = mix(col, base * uBright, uEmit);
   col += vec3(uFlash);
   if (uFogOn > 0.5) {
     float d = length(vWorld - uCam);
     float f = clamp((d - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0);
-    col = mix(col, uFog, f * f * (3.0 - 2.0 * f));
+    float sunAmt = pow(max(dot(normalize(vWorld - uCam), normalize(uSun)), 0.0), 6.0);   // forward scattering: haze warms and brightens toward the sun
+    vec3 fogC = uFog + uSunCol * sunAmt * 0.22;
+    col = mix(col, fogC, f * f * (3.0 - 2.0 * f));
   }
   gl_FragColor = vec4(col, uAlpha);
 }`;
@@ -422,10 +432,10 @@ export function createRenderer(canvas, opts = {}) {
     setCommon(dim);
     for (const g of state.groups) {
       if (g.noShadow && state.hideCeil) continue;
-      setTex(g.tex || g.mat); gl.uniform1f(U.uEmit, g.emit); gl.uniform1f(U.uMicro, g.emit ? 0 : (MICRO[g.mat] ?? 0.2));
+      setTex(g.tex || g.mat); gl.uniform1f(U.uEmit, g.emit); gl.uniform1f(U.uMicro, g.emit ? 0 : (MICRO[g.mat] ?? 0.2)); gl.uniform1f(U.uSpec, g.emit ? 0 : (SPEC[g.mat] ?? 0));
       bindMesh(g); gl.drawArrays(gl.TRIANGLES, 0, g.count);
     }
-    gl.uniform1f(U.uMicro, 0); gl.uniform1f(U.uEmit, 0);
+    gl.uniform1f(U.uMicro, 0); gl.uniform1f(U.uSpec, 0); gl.uniform1f(U.uEmit, 0);
     setTex('plain'); boundMesh = null;
   }
 

@@ -6,7 +6,7 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/validate-maps.js && node test/physics-walk.js && node test/sim-bots.js && node test/vote-call.js && node test/combat.js && node test/streaks.js && node test/visuals.js",
+    "test": "node test/validate-maps.js && node test/physics-walk.js && node test/sim-bots.js && node test/vote-call.js && node test/combat.js && node test/streaks.js && node test/visuals.js && node test/cameras.js",
     "dev": "node --watch server/index.js"
   },
   "engines": { "node": ">=18" },

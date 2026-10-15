@@ -240,3 +240,6 @@ table.board tr.dead td { opacity: 0.55; }
 #ks-offer kbd { display: inline-block; font: 700 12px system-ui; background: #8ef; color: #06141a; border-radius: 4px; padding: 1px 7px; margin-bottom: 6px; }
 #ks-offer .card b { display: block; font-size: 15px; color: #fff; margin-bottom: 3px; }
 #ks-offer .card small { font-size: 11px; line-height: 1.35; color: #9fb4c4; display: block; }
+
+/* cinematic vignette over the 3D view during matches */
+body[data-view='match']::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 58%, rgba(4,6,14,0.34) 100%); }

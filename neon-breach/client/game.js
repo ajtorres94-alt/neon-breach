@@ -8,6 +8,7 @@ import { buildLights, updateLights, drawFixtures, drawBeams } from './lights.js'
 import { P, stepBody, newBody, raycast, dirFromAngles } from '/shared/physics.js';
 import { WEAPONS, WEAPON_ORDER, CATEGORIES, GADGETS, MODES, PICKUP_COLORS, STREAK_INFO, STREAK_TIERS } from '/shared/weapons.js';
 import { reloadPose, drawProps } from './reload.js';
+import { drawCameras, drawCameraCones, miniCamera } from './cameras.js';
 import { drawDog, drawSentry, drawRats, drawBarrier, hpBar } from './units.js';
 import { settings, onSettings, OPERATORS, teamInfo } from './settings.js';
 import { input, bindCanvas, beginFrame, endFrame, actionDown, actionPressed, padPressed, mouseDelta, digitPressed, requestLock, releaseLock } from './input.js';
@@ -183,6 +184,7 @@ function onMatch(m) {
   S.calls = []; closeWheel(false); resetStreaks();
   S.flags = null; S.tokens = []; S.teamScore = [0, 0]; S.inv = { pistol: { mag: WEAPONS.pistol.mag, reserve: Infinity } };
   S.cur = 'pistol'; S.spotted.clear();
+  S.cams = m.cams || []; S.camOff = 0; S.camInit = false; S.camAlert = []; S.exposed = false;
   $('h-feed').innerHTML = '';
   buildRain();
   game.view = 'match'; game.paused = false; game.emit('view', 'match');
@@ -217,6 +219,7 @@ function onSnapshot(s) {
     if (s.ph === 'play' && S.phase === 'countdown') { audio.play('start'); banner('GO', '#fff', 900); }
     S.phase = s.ph;
   }
+  if (s.ct != null) { const o = s.ct - now(); S.camOff = S.camInit ? S.camOff * 0.9 + o * 0.1 : o; S.camInit = true; }   // sync the swivel clock with the server
   S.timeLeft = s.tl; S.countdown = s.cd; S.teamScore = s.ts; S.pk = s.pk;
   S.pj = s.pj || []; S.pjT = now(); S.lz = s.lz || [];
   S.units = s.u || []; syncBarriers();
@@ -234,10 +237,10 @@ function onSnapshot(s) {
     pl.name = ro.name || pl.name || 'Operator'; pl.bot = !!ro.bot; pl.op = ro.op || 0; pl.team = e.tm;
     pl.tx = e.x; pl.ty = e.y; pl.tz = e.z; pl.ta = e.a; pl.tp = e.p; pl.crouch = !!e.c; pl.lean = e.l;
     pl.hp = e.h; pl.armor = e.r; pl.wpn = e.w; pl.al = !!e.al; pl.ads = !!e.ad; pl.prot = !!e.pr;
-    pl.helm = !!e.hm; pl.k = e.k; pl.d = e.d; pl.a = e.as; pl.cp = e.cp; pl.rt = e.rt; pl.sc = e.sc; pl.carry = e.cr; pl.gd = !!e.gd;
+    pl.ex = !!e.ex; pl.helm = !!e.hm; pl.k = e.k; pl.d = e.d; pl.a = e.as; pl.cp = e.cp; pl.rt = e.rt; pl.sc = e.sc; pl.carry = e.cr; pl.gd = !!e.gd;
     if (e.i === game.myId) {
       S.hp = e.h; S.armor = e.r; S.mines = e.mi; S.lasers = e.lm || 0; S.knives = e.kn || 0; S.carrying = e.cr; S.team = e.tm;
-      S.protectedUntil = e.pr ? t + 0.2 : 0; S.streak = e.st || 0; S.fx.helmet = !!e.hm; S.fx.wall = !!e.ww;
+      S.exposed = !!e.ex; S.protectedUntil = e.pr ? t + 0.2 : 0; S.streak = e.st || 0; S.fx.helmet = !!e.hm; S.fx.wall = !!e.ww;
       if (!e.al) S.offer = null;
       if (S.golden && !e.gd) { S.golden = false; delete S.inv.golden; if (S.cur === 'golden') selectBest(); }
       if (S.alive && !e.al && S.phase === 'play') { /* death is signalled by the kill event; nothing to do */ }
@@ -347,6 +350,12 @@ function onEvent(ev) {
       break;
     }
     case 'fx': if (ev.k === 'uav') S.fx.uav = t + ev.dur; else if (ev.k === 'radar') S.fx.radar = t + ev.dur; break;
+    case 'camspot': {
+      S.camAlert[ev.c] = t + 1.6; audio.play('camalert', spatial(ev.x, ev.y + 1.5, ev.z, 0.6));
+      if (ev.id === game.myId) toast('SPOTTED BY A SECURITY CAMERA - EXPOSED FOR 5s', '#ff5a4a');
+      else toast(`${nameOf(ev.id).toUpperCase()} TRIPPED A SECURITY CAMERA`, '#ff8a70');
+      break;
+    }
     case 'helmet': audio.play('tink', spatial(ev.x, ev.y, ev.z, 1)); spark([ev.x, ev.y, ev.z], 10, [0.9, 0.9, 1], 4); if (ev.id === game.myId) toast('HELMET ABSORBED A HEADSHOT', '#8ef'); break;
     case 'bite': audio.play('meleehit', spatial(ev.x, ev.y, ev.z, 0.7)); S.uFlash.set(ev.id, t + 0.25); break;
     case 'ukill': {
@@ -849,10 +858,11 @@ function drawUnits(t, cam) {
 function drawWorldObjects(t, cam) {
   const mp = game.map; if (!mp || game.view !== 'match') return;
   if (window.__showcase) {                                          // test hook: draw one gun side-on in front of the camera
-    const g = GUNS[window.__showcase], f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)], r = [Math.cos(cam.yaw), -Math.sin(cam.yaw)], mid = (g.muzzle + 0.25) / 2, D = 0.75 + Math.abs(g.muzzle) * 0.55;
+    const g = GUNS[window.__showcase], f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)], r = [Math.cos(cam.yaw), -Math.sin(cam.yaw)], mid = (g.muzzle + 0.25) / 2, D = (0.75 + Math.abs(g.muzzle) * 0.55) * (window.__showZoom || 1);
     drawGun(R, g, { origin: [cam.x + f[0] * D + r[0] * mid, cam.y, cam.z + f[1] * D + r[1] * mid], yaw: cam.yaw - Math.PI / 2, pitch: 0, accent: [0.8, 0.5, 0.2], gold: !!g.gold });
   }
   if (S.lights) drawFixtures(R, S.lights, cam, t);
+  if (S.cams && S.cams.length) drawCameras(R, S.cams, t + S.camOff, t, S.camAlert);
   if (window.__showUnit) {                                          // test hook: one unit / soldier posed in front of the camera
     const k = window.__showUnit, D = window.__showDist || 2.4, f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)], x = cam.x + f[0] * D, z = cam.z + f[1] * D, y = cam.y - 1.62, a = cam.yaw + Math.PI + (window.__showTurn || 0);
     const sm = { rx: x, ry: y, rz: z, ra: a, rp: 0, speed: 4, phase: t * 8, walk: t * 5, h: 80, m: 100, am: 70, tm: 0, o: 1, bx: [x - 2, x + 2, z - 0.25, z + 0.25, y, y + 3.2] };
@@ -928,7 +938,7 @@ function drawWorldObjects(t, cam) {
 function drawTransparent(t, cam) {
   const mp = game.map; if (!mp || game.view !== 'match') return;
   R.transparent(true);
-  if (S.lights) drawBeams(R, S.lights, S.cam || cam, t);
+  if (S.cams && S.cams.length) drawCameraCones(R, S.cams, t + S.camOff, t, S.camAlert, mp.boxes);
   if (S.flags) S.flags.forEach((f, i) => { if (f[0] !== 1) beam(f[2], f[3], f[4], 14, teamInfo(i).rgb, 0.18, 0.5); });
   if (game.mode === 'koth') { const h = mp.hill; beam(h.x, h.y, h.z, 12, S.hill === -2 ? [0.9, 0.9, 1] : S.hill === -1 ? [1, 0.85, 0.2] : teamInfo(S.hill).rgb, 0.14, h.r * 1.9); }
   if (game.mode === 'gg' && S.goldenW && S.goldenW[0] == null) beam(S.goldenW[1], S.goldenW[3], S.goldenW[2], 14, [1, 0.8, 0.2], 0.25, 0.4);
@@ -994,6 +1004,7 @@ function drawTransparent(t, cam) {
 function render(t, dt) {
   const cam = computeCamera(dt, t);
   S.cam = cam;
+  if (window.__cam) Object.assign(cam, window.__cam);                                                                                     // test hook: free camera
   if (window.__tp) { cam.x += Math.sin(cam.yaw) * window.__tp; cam.z += Math.cos(cam.yaw) * window.__tp; cam.y += 0.7; }     // test hook: pull the camera back
   R.begin(cam, { brightness: settings.gfx.brightness, weather: S.weather, fogScale: settings.gfx.fogScale, time: t, shadowQuality: settings.gfx.quality === 'low' ? 0 : 1 });
   if (game.view === 'match' && S.lights) {
@@ -1145,6 +1156,7 @@ function drawMarkers(t, cx, cy, W, H) {
   if (game.mode === 'gg' && S.goldenW && S.goldenW[0] == null) worldMarker(S.goldenW[1], S.goldenW[3] + 2, S.goldenW[2], 'GOLDEN GUN', '#ffd23f', W, H);
   if (game.mode === 'gg' && S.goldenW && S.goldenW[0] != null && S.goldenW[0] !== game.myId) { const h = S.players.get(S.goldenW[0]); if (h && h.al) worldMarker(h.rx, h.ry + 2.6, h.rz, 'GOLD', '#ffd23f', W, H); }
   for (const k of S.tokens) worldMarker(k[1], k[2] + 1.2, k[3], k[4] === S.team ? 'DENY' : 'INTEL', teamInfo(k[4]).css, W, H);
+  for (const pl of S.players.values()) if (pl.ex && pl.al && pl.id !== game.myId) worldMarker(pl.rx, pl.ry + 2.35, pl.rz, 'EXPOSED', '#ff3b30', W, H);
   S.calls = S.calls.filter(c => t - c.t < CALL_LIFE);
   for (const c of S.calls) { const d = CALLS.find(x => x.k === c.k); worldMarker(c.p[0], c.p[1] + 0.9, c.p[2], `${c.id === game.myId ? 'YOU' : nameOf(c.id)}: ${d.label.toUpperCase()}`, d.css, W, H); }
 }
@@ -1219,11 +1231,12 @@ function drawMini(t) {
     if (u.ty === 'barrier') { mctx.strokeStyle = '#6f6'; mctx.lineWidth = 3; mctx.beginPath(); mctx.moveTo(u.bx[0] * ppu, u.bx[2] * ppu); mctx.lineTo(u.bx[1] * ppu, u.bx[3] * ppu); mctx.stroke(); }
   }
   if (S.fx.uav > t || S.fx.radar > t) { const ph = (t * 0.7) % 1; mctx.strokeStyle = `rgba(120,255,200,${0.45 * (1 - ph)})`; mctx.lineWidth = 2; mctx.beginPath(); mctx.arc(b.x * ppu, b.z * ppu, ph * 24 * ppu, 0, 7); mctx.stroke(); }
+  if (S.cams) for (let i = 0; i < S.cams.length; i++) miniCamera(mctx, S.cams[i], t + S.camOff, ppu, (S.camAlert[i] || 0) > t);
   // players
   const tm = teamMode();
   for (const pl of S.players.values()) {
     if (pl.id === game.myId || !pl.al) continue;
-    const ally = tm && pl.team === S.team, sp = (S.spotted.get(pl.id) || 0) > t, uav = S.fx.uav > t, radar = S.fx.radar > t;
+    const ally = tm && pl.team === S.team, sp = (S.spotted.get(pl.id) || 0) > t || !!pl.ex, uav = S.fx.uav > t, radar = S.fx.radar > t;
     if (!ally && !sp && !uav && !radar) continue;
     const ti = teamInfo(pl.team);
     mctx.save(); mctx.translate(pl.rx * ppu, pl.rz * ppu); mctx.rotate(-pl.ra);
@@ -1264,6 +1277,7 @@ function updateStreakUI(t) {
   const fx = [];
   if (S.fx.uav > t) fx.push(`UAV <b>${Math.ceil(S.fx.uav - t)}s</b>`);
   if (S.fx.radar > t) fx.push(`RADAR <b>${Math.ceil(S.fx.radar - t)}s</b>`);
+  if (S.exposed) fx.push('EXPOSED');
   if (S.fx.helmet) fx.push('HELMET');
   if (S.fx.wall) fx.push('WALL BOOTS');
   const mine = S.units.filter(u => (teamMode() ? u.tm === S.team : u.o === game.myId) && u.ty !== 'barrier').length;

@@ -279,15 +279,15 @@ GEN.gunmetal = (u, v) => {                                                 // pa
   const k = 0.82 + (grain - 0.5) * 0.22 + (grain2 - 0.5) * 0.1 + (n - 0.5) * 0.1;
   return [k, k * 1.01, k * 1.04, grain * 0.5];
 };
-GEN.polymer = (u, v) => {                                                  // stippled grip texture
-  const st = vnoise(u * 160, v * 160, 160, 160, 361), st2 = hash2(Math.floor(u * 80), Math.floor(v * 80), 362);
-  const k = 0.84 + (st - 0.5) * 0.2 + (st2 > 0.5 ? 0.05 : -0.03);
-  return [k, k, k * 1.02, st2];
+GEN.polymer = (u, v) => {                                                  // moulded polymer: fine matte stipple, very low contrast
+  const st = vnoise(u * 160, v * 160, 160, 160, 361), st2 = hash2(Math.floor(u * 96), Math.floor(v * 96), 362);
+  const k = 0.93 + (st - 0.5) * 0.08 + (st2 > 0.5 ? 0.02 : -0.015);
+  return [k, k, k * 1.015, st2 * 0.6];
 };
-GEN.gunwood = (u, v) => {                                                  // walnut grain, runs along u
-  const g = fbm(u * 1, v * 1, 3, 3, 371), line = Math.sin((v * 22 + g * 6 + vnoise(u * 3, v * 40, 3, 40, 372) * 3) * Math.PI);
-  const k = 0.7 + line * 0.12 + (g - 0.5) * 0.3, fine = vnoise(u * 200, v * 30, 200, 30, 373);
-  return [0.66 * k * (0.9 + fine * 0.2), 0.42 * k * (0.9 + fine * 0.2), 0.22 * k * (0.9 + fine * 0.2), line * 0.4];
+GEN.gunwood = (u, v) => {                                                  // walnut: straight fine grain running along the part (v), darker figure bands
+  const g = fbm(u * 0.8, v * 0.25, 3, 3, 371), line = Math.sin((u * 46 + g * 7 + vnoise(u * 5, v * 1.2, 5, 1.2, 372) * 2.4) * Math.PI);
+  const k = 0.82 + line * 0.07 + (g - 0.5) * 0.28, fine = vnoise(u * 160, v * 12, 160, 12, 373);
+  return [0.4 * k * (0.92 + fine * 0.16), 0.235 * k * (0.92 + fine * 0.16), 0.125 * k * (0.92 + fine * 0.16), line * 0.3];
 };
 
 // ---------------------------------------------------------------- baking

@@ -100,7 +100,7 @@ function foundry() {
     mb.b(-22, 9 * s, 3, 5, 0, 2.2, 'crate'); mb.b(22, 9 * s, 3, 5, 0, 2.2, 'crate');
     mb.b(-11, 8 * s, 4, 2, 0, 1.2, 'crate'); mb.b(11, 8 * s, 4, 2, 0, 1.2, 'crate');
     mb.stairs(0, 13.4 * s, 0, -s, 4, 7.4, 3, 8, 'metal');           // up to the catwalk
-    for (const sx of [1, -1]) mb.b(sx * 5.6, s * 5.85, 6.8, 0.3, 3, 4.1, 'accent'); // catwalk rails (z edges)
+    for (const sx of [1, -1]) mb.b(sx * 5.6, s * 5.85, 6.8, 0.3, 3, 4.1, 'metal'); // catwalk rails (z edges)
     ffa.push([-20, 22], [20, 22], [-24, 12], [24, 12], [-8, 14], [8, 14]);
   }
   mb.b(0, 0, 18, 12, 2.5, 3, 'metal');                              // central catwalk
@@ -112,7 +112,7 @@ function foundry() {
   }
   for (const s of [1, -1]) { mb.barrel(-18.2, 13.4 * s, 'red'); mb.barrel(-18.9, 12.6 * s, 'olive'); mb.barrel(12.3, 25.8 * s, 'blue'); mb.barrel(13.1, 25.2 * s, 'red'); }
   for (const sx of [1, -1]) {
-    mb.b(sx * 8.85, 0, 0.3, 12, 3, 4.1, 'accent');
+    mb.b(sx * 8.85, 0, 0.3, 12, 3, 4.1, 'metal');
     for (const sz of [1, -1]) mb.b(sx * 8, sz * 5, 1, 1, 0, 2.5, 'metal');
     mb.b(sx * 12.5, 0, 3, 3, 0, 1.5, 'crate');
   }
@@ -134,7 +134,7 @@ function atrium() {
   for (const sx of [1, -1]) {
     mb.b(sx * 23, 0, 6, 40, 3.6, 4, 'marble');                      // balcony
     for (const z of [-18, -6, 6, 18]) mb.col(sx * 20.5, z, 0.5, 0, 3.6, 'marble');
-    mb.b(sx * 20.15, 0, 0.3, 32, 4, 5.1, 'accent');
+    mb.b(sx * 20.15, 0, 0.3, 32, 4, 5.1, 'metal');
     mb.b(sx * 24.5, 8, 2, 2, 4, 5.2, 'crate'); mb.b(sx * 24.5, -8, 2, 2, 4, 5.2, 'crate');
     mb.b(sx * 24, 0, 2, 3, 0, 1.2, 'crate');
     for (const s of [1, -1]) mb.stairs(sx * 12.8, 18 * s, sx, 0, 4, 7.2, 4, 9, 'marble');
@@ -334,7 +334,6 @@ function wreckage() {
   mb.b(-2, 0, 14, 0.8, 2.9, 3.1, 'dark', false); mb.b(-2, 0, 0.8, 14, 2.9, 3.1, 'dark', false); // bent rotor
   mb.deco({ k: 'heli', x: 0, z: 0 });
   mb.barrel(-10.2, -3.2, 'red'); mb.barrel(-10.9, -2.5, 'olive'); mb.barrel(9.5, 4.6, 'blue');
-  mb.b(-7.4, 0, 0.8, 0.8, 1.5, 2.1, 'glow');
   mb.b(-9, 3.5, 2, 1.2, 0, 1.0, 'rust'); mb.b(7, -4, 1.6, 2.4, 0, 0.9, 'rust'); mb.b(4, 4.2, 1.2, 1.2, 0, 0.8, 'rust');
   for (const s of [1, -1]) {
     mb.b(0, 22 * s, 12, 6, 0, 0.2, 'accent');
@@ -344,7 +343,7 @@ function wreckage() {
     mb.car(-4, 12 * s, true, 'rust'); mb.car(2, 13.5 * s, true, 'olive');
     // overhead walkway across the road
     mb.b(0, 8 * s, 22, 3, 3.0, 3.3, 'metal');
-    mb.b(0, 9.45 * s, 22, 0.15, 3.3, 4.2, 'accent'); mb.b(0, 6.55 * s, 22, 0.15, 3.3, 4.2, 'accent');
+    mb.b(0, 9.45 * s, 22, 0.15, 3.3, 4.2, 'metal'); mb.b(0, 6.55 * s, 22, 0.15, 3.3, 4.2, 'metal');
     for (const px of [-7, 7]) mb.b(px, 8 * s, 1, 1, 0, 3.0, 'concrete');
     for (const sx of [1, -1]) {
       const Z = (a, c, sill, top) => (s > 0 ? [a, c, sill, top] : [-c, -a, sill, top]);
@@ -352,7 +351,7 @@ function wreckage() {
       mb.stairs(sx * 17.7, 8 * s, -sx, 0, 2.6, 6.5, 3.3, 8, 'metal');
       // gas station canopy
       for (const px of [11, 23]) for (const pz of [10.5, 17.5]) mb.b(sx * px, pz * s, 0.6, 0.6, 0, 4.2, 'concrete');
-      mb.b(sx * 17, 14 * s, 12.6, 7.6, 4.2, 4.6, 'accent');
+      mb.b(sx * 17, 14 * s, 12.6, 7.6, 4.2, 4.6, 'metal');
       mb.pump(sx * 14, 13 * s); mb.pump(sx * 14, 15 * s); mb.pump(sx * 20, 13 * s); mb.pump(sx * 20, 15 * s);
       mb.deco({ k: 'lamp', x: sx * 10.2, z: 21.5 * s, h: 5.5 }); mb.deco({ k: 'lamp', x: sx * 9.8, z: 3.5 * s, h: 5.5 });
       // shop
@@ -391,6 +390,7 @@ function spawnAt(boxes, x, z, yawFrom) {
  * Turn an open arena into an enclosed hall: nearly all waist-high cover becomes full-height partitions, the perimeter walls rise to a
  * ceiling, and the ceiling gets light strips. Deterministic. Stairs, pads, rails, props with decor and boxes near objectives are kept.
  */
+const WALLISH = new Set(['wall', 'brick', 'stone', 'concrete', 'metal']);
 function enclose(m) {
   const bx = m.boxes, keepPts = [];
   for (const p of m.pickups) keepPts.push([p.x, p.z, 1.0]);
@@ -400,6 +400,10 @@ function enclose(m) {
   const hsh = (i) => { let h = Math.imul(i + 1, 2654435761) ^ Math.imul(m.id.length * 97 + 13, 40503); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) % 1000 / 1000; };
   bx.forEach((b, i) => {
     if (i < 5 || b.vis === false || b.st || b.y0 > 0.05 || b.y1 < 0.75 || b.y1 > 1.65 || b.mat === 'accent' || b.mat === 'glow') return;
+    // only real partition walls get lifted to ceiling-ish height; crates, sandbags, hedges, jersey barriers, rocks and other cover stay waist-high
+    // (previously every low block became a 3 m pillar, which read as random blocks stuck in the floor plan)
+    const lx = b.x1 - b.x0, lz = b.z1 - b.z0, len = Math.max(lx, lz), thick = Math.min(lx, lz);
+    if (!WALLISH.has(b.mat) || len < 4 || thick > 1.4 || len / thick < 3) return;
     if (keepPts.some(([x, z, r]) => x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r)) return;
     if (hsh(i) < 0.12) return;                                         // a few low pieces survive
     b.y1 = 2.7 + hsh(i + 500) * 0.7;
@@ -408,7 +412,7 @@ function enclose(m) {
   const roofY = Math.max(9, Math.ceil(top + 1));
   for (let i = 1; i <= 4; i++) bx[i].y1 = roofY;
   bx.push({ x0: -W - 1, x1: W + 1, z0: -W - 1, z1: W + 1, y0: roofY, y1: roofY + 0.6, mat: 'dark', roof: true });
-  for (const x of [-18, -6, 6, 18]) for (const z of [-21, -7, 7, 21]) bx.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 3, z1: z + 3, y0: roofY - 0.2, y1: roofY, mat: 'glow' });
+  for (const x of [-18, -6, 6, 18]) for (const z of [-21, -7, 7, 21]) bx.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 3, z1: z + 3, y0: roofY - 0.1, y1: roofY, mat: 'metal' });   // fixture housings; client/lights.js draws the fluorescent tubes + lights
   m.roofY = roofY;
 }
 

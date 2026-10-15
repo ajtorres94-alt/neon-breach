@@ -1,6 +1,6 @@
 // Procedural audio, designed to sit closer to a AAA shooter mix than a chiptune: layered gunshots (crack + body + sub thump +
 // reverberant tail), metallic reload foley, convolution reverb on a send bus, a soft-clip "punch" stage on weapons, and a
-// cinematic score (string pads, brass swell, timpani/taiko and a driving low ostinato in matches).
+// cyberpunk score: synthwave / dark-electro with four-on-the-floor kick, rolling bass, arps and lead stabs (menu 100 bpm, match 132 bpm).
 // Buses: master -> { sfx, ui, music } ; sfx and music also feed a shared reverb.
 
 let ctx = null, buses = null, noiseBuf = null, rainNodes = null, musicTimer = null, reverb = null, gunBus = null, musicMode = null;
@@ -190,6 +190,7 @@ const SOUNDS = {
   lost: (t) => { tone('ui', t, 220, 165, 1.0, 0.25, 'sawtooth', 0, { lp: 700, send: 0.7, a: 0.05 }); tone('ui', t, 55, 45, 1.2, 0.5, 'sine'); },
   tick: (t) => { noise('ui', t, 0.025, 0.25, 'bandpass', 3500, 2500, 0, { q: 3, a: 0.0005 }); tone('ui', t, 900, 600, 0.03, 0.12, 'sine'); },
   callout: (t) => { tone('ui', t, 880, 880, 0.12, 0.2, 'sine', 0, { send: 0.3 }); tone('ui', t + 0.09, 1320, 1320, 0.2, 0.2, 'sine', 0, { send: 0.3 }); },
+  camalert: (t) => { for (let i = 0; i < 3; i++) { tone('ui', t + i * 0.16, 1500, 1500, 0.09, 0.16, 'square', 0, { lp: 3200, send: 0.3 }); tone('ui', t + i * 0.16 + 0.08, 1000, 1000, 0.07, 0.12, 'square', 0, { lp: 2600 }); } },
   vote: (t) => { tone('ui', t, 660, 660, 0.12, 0.18, 'sine', 0, { send: 0.3 }); },
   start: (t) => { tone('ui', t, 55, 38, 1.4, 0.7, 'sine', 0, { send: 0.4 }); noise('ui', t, 0.9, 0.3, 'bandpass', 600, 4000, 0, { a: 0.3, q: 0.5, send: 0.6 }); [196, 294, 392].forEach(f => tone('ui', t + 0.05, f, f, 1.1, 0.12, 'sawtooth', 0, { lp: 1200, a: 0.05, send: 0.6 })); },
   win: (t) => { [262, 330, 392, 523, 659].forEach((f, i) => tone('ui', t + i * 0.13, f, f, 1.4, 0.16, 'sawtooth', 0, { lp: 1600, a: 0.03, send: 0.8 })); tone('ui', t, 65, 40, 1.8, 0.6, 'sine'); noise('ui', t, 0.2, 0.3, 'lowpass', 3000, 200, 0, { send: 0.5 }); },
@@ -223,7 +224,7 @@ function playSample(name, v, p) {
   const src = ctx.createBufferSource(); src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
   src.playbackRate.value = 0.97 + Math.random() * 0.06;
   const g = ctx.createGain(); g.gain.value = v; src.connect(g);
-  const ui = ['hit', 'headshot', 'kill', 'pickup', 'weapon', 'flag', 'capture', 'lost', 'tick', 'callout', 'vote', 'start', 'win', 'click'].includes(name);
+  const ui = ['hit', 'headshot', 'kill', 'pickup', 'weapon', 'flag', 'capture', 'lost', 'tick', 'callout', 'camalert', 'vote', 'start', 'win', 'click'].includes(name);
   out(g, ui ? 'ui' : 'sfx', p, ui ? 0 : 0.25);
   src.start(); return true;
 }
@@ -265,34 +266,58 @@ function pad(t, notes, dur, gain, bright = 1400) {
 const timpani = (t, f, g) => { tone('music', t, f * 1.5, f, 0.5, 0.9 * g, 'sine', 0, { a: 0.002, slide: 0.12, send: 0.5 }); noise('music', t, 0.08, 0.5 * g, 'lowpass', 900, 200, 0, { a: 0.001, send: 0.4 }); noise('music', t, 0.9, 0.12 * g, 'lowpass', 300, 80, 0, { a: 0.02, send: 0.8 }); };
 const brass = (t, m, dur, g) => { const f = mtof(m); for (const det of [-6, 6]) tone('music', t, f, f, dur, g * 0.12, 'sawtooth', 0, { a: 0.18, detune: det, lp: 1100, send: 0.6, hold: dur * 0.3 }); };
 
-// minor-key progressions (i - VI - III - VII); chord = [root, third, fifth, octave] as MIDI notes
-const PROG = [[57, 60, 64, 69], [53, 57, 60, 65], [48, 52, 55, 60], [55, 59, 62, 67]];       // Am F C G
-const PROG2 = [[50, 53, 57, 62], [46, 50, 53, 58], [53, 57, 60, 65], [48, 52, 55, 60]];       // Dm Bb F C
+// Cyberpunk score: driving synthwave / dark-electro. C minor, chords as [root, third, fifth, seventh] MIDI notes.
+const PROG = [[48, 51, 55, 58], [44, 48, 51, 55], [46, 50, 53, 56], [43, 46, 50, 53]];        // Cm7  Abmaj7  Bb  Gm7
+const PROG2 = [[48, 51, 55, 58], [44, 48, 51, 55], [51, 55, 58, 62], [46, 50, 53, 58]];       // Cm7  Abmaj7  Ebmaj7  Bb
+const kick = (t, g = 1) => { tone('music', t, 150, 45, 0.28, 1.0 * g, 'sine', 0, { a: 0.001, slide: 0.09 }); noise('music', t, 0.02, 0.35 * g, 'highpass', 2500, 2500, 0, { a: 0.0005 }); };
+const clap = (t, g = 1) => { for (const o of [0, 0.011, 0.022]) noise('music', t + o, 0.09, 0.3 * g, 'bandpass', 1500, 1500, 0, { a: 0.001, q: 0.9, send: 0.25 }); noise('music', t, 0.28, 0.1 * g, 'bandpass', 1800, 1200, 0, { a: 0.002, q: 0.7, send: 0.6 }); };
+const hat = (t, g, open) => noise('music', t, open ? 0.2 : 0.03, g, 'highpass', 8000, 8000, 0, { a: 0.0005 });
+/** Rolling 16th-note bass: saw + sub through a low-pass that pumps with each note. */
+const bassNote = (t, m, len, g) => { const f = mtof(m); tone('music', t, f, f, len, 0.24 * g, 'sawtooth', 0, { a: 0.003, lp: 700, send: 0.05 }); tone('music', t, f, f, len, 0.3 * g, 'sine', 0, { a: 0.004 }); };
+/** Detuned saw stab / lead. */
+const lead = (t, m, len, g, lp = 3200) => { const f = mtof(m); for (const det of [-12, 0, 12]) tone('music', t, f, f, len, 0.06 * g, 'sawtooth', det / 40, { a: 0.006, detune: det, lp, send: 0.45, hold: len * 0.3 }); };
 
-/** Cinematic score. mode: 'menu' (slow pads, distant timpani, a quiet lead) | 'match' (pulse, taiko and low ostinato) */
+/** mode: 'menu' (100 bpm, moody but moving) | 'match' (132 bpm, full-throttle) */
 export function setMusic(mode) {
   if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
   musicMode = mode;
   if (!ctx || !mode) return;
-  const menu = mode === 'menu', bpm = menu ? 70 : 104, beat = 60 / bpm, barLen = beat * 4;
+  const menu = mode === 'menu', bpm = menu ? 100 : 132, beat = 60 / bpm, barLen = beat * 4, s16 = beat / 4;
   const prog = menu ? PROG : PROG2;
+  const ARP = [0, 2, 1, 3, 2, 1, 3, 2, 0, 3, 1, 2, 3, 1, 2, 3];                         // chord-tone order for the 16th arp
+  const RHY = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0];                         // syncopated bass accents
   let bar = 0, next = ctx.currentTime + 0.1;
   const schedule = () => {
     while (next < ctx.currentTime + 1.2) {
-      const t = next, ch = prog[Math.floor(bar / 2) % prog.length], first = bar % 2 === 0;
-      if (first) pad(t, ch, barLen * 2.1, menu ? 0.9 : 0.75, menu ? 1100 : 1700);
-      if (menu) {
-        if (first) timpani(t, mtof(ch[0] - 24), 0.45);
-        const lead = [ch[2], ch[3], ch[1] + 12, ch[3]];
-        [0, 1.5, 2.5].forEach((b, i) => { if ((bar + i) % 3 !== 2) tone('music', t + b * beat, mtof(lead[(bar + i) % 4] + 12), mtof(lead[(bar + i) % 4] + 12), 1.6, 0.05, 'triangle', (i - 1) * 0.3, { a: 0.02, lp: 2500, send: 0.9 }); });
-      } else {
-        // driving low ostinato (8ths), taiko on 1 and 3 + offbeat ghost, hats, brass stab on every 4th bar
-        const root = ch[0] - 12;
-        for (let i = 0; i < 8; i++) { const m = root + (i % 4 === 3 ? 7 : i % 2 ? 0 : (i === 4 ? 3 : 0)); tone('music', t + i * beat / 2, mtof(m), mtof(m), beat * 0.45, i % 2 ? 0.13 : 0.2, 'sawtooth', 0, { a: 0.005, lp: i % 2 ? 380 : 560, send: 0.15 }); }
-        timpani(t, mtof(ch[0] - 24), 0.9); timpani(t + beat * 2, mtof(ch[0] - 24), 0.75); if (bar % 2) timpani(t + beat * 3.5, mtof(ch[0] - 19), 0.5);
-        for (let i = 0; i < 16; i++) if (i % 2 === 0 || bar % 4 === 3) noise('music', t + i * beat / 4, 0.03, i % 4 === 0 ? 0.07 : 0.035, 'highpass', 7000, 7000, (i % 4 - 1.5) * 0.2, { a: 0.0005 });
-        if (bar % 4 === 0) brass(t, ch[0] + 12, beat * 3, 0.9);
-        if (bar % 4 === 3) { noise('music', t + beat * 2, beat * 2, 0.18, 'bandpass', 500, 5000, 0, { a: beat * 1.8, q: 0.5, send: 0.6 }); }   // riser into the next phrase
+      const t = next, ch = prog[Math.floor(bar / 2) % prog.length], phrase = bar % 8;
+      // pad underneath, one chord every two bars
+      if (bar % 2 === 0) pad(t, ch.slice(0, 3).map(m => m + 12), barLen * 2.05, menu ? 0.5 : 0.35, menu ? 1500 : 1900);
+      // bass: 16th rolling pulse, octave jumps on the syncopated hits
+      for (let i = 0; i < 16; i++) {
+        if (menu && i % 2) continue;
+        const m = ch[0] - 12 + (RHY[i] && i % 8 ? 12 : 0) + (i === 14 && bar % 2 ? 3 : 0);
+        bassNote(t + i * s16, m, s16 * 0.9, menu ? 0.8 : (i % 4 === 0 ? 1 : 0.75));
+      }
+      // drums
+      for (let b = 0; b < 4; b++) {
+        if (!menu || b % 2 === 0) kick(t + b * beat, menu ? 0.7 : 1);
+        if (b % 2 === 1) clap(t + b * beat, menu ? 0.7 : 1);
+        hat(t + b * beat + beat / 2, menu ? 0.05 : 0.09, true);
+      }
+      if (!menu) for (let i = 0; i < 16; i++) if (i % 2) hat(t + i * s16, 0.03 + (i % 4 === 3 ? 0.02 : 0), false);
+      // arpeggio: bright square-ish pluck, filter opens across the phrase
+      for (let i = 0; i < 16; i++) {
+        if (menu && i % 2) continue;
+        const m = ch[ARP[i]] + 24 + (i >= 8 && ARP[i] === 0 ? 12 : 0), f = mtof(m);
+        tone('music', t + i * s16, f, f, s16 * 1.6, menu ? 0.035 : 0.05, 'square', (i % 4 - 1.5) * 0.25, { a: 0.003, lp: 1500 + phrase * 260, send: 0.5 });
+      }
+      // hook: detuned lead stabs on the second half of every phrase
+      if (!menu && phrase >= 4) { const hook = [0, 7, 10, 12, 10, 7, 3, 7]; hook.forEach((h, i) => { if (RHY[i * 2] || i % 4 === 0) lead(t + i * beat / 2, ch[0] + 24 + h - (h > 11 ? 12 : 0), beat * 0.45, 1); }); }
+      if (menu && bar % 2 === 0) lead(t + beat * 2.5, ch[2] + 24, beat * 1.4, 0.8, 2200);
+      // riser + snare roll into the next phrase
+      if (phrase === 7) {
+        noise('music', t + beat * 2, beat * 2, 0.2, 'bandpass', 400, 7000, 0, { a: beat * 1.9, q: 0.6, send: 0.5 });
+        if (!menu) for (let i = 0; i < 8; i++) clap(t + beat * 3 + i * beat / 8, 0.25 + i * 0.05);
       }
       next += barLen; bar++;
     }

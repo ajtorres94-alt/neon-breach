@@ -137,3 +137,18 @@ Tiny parts use low-poly spheres and scaled cubes to keep the cost down.
 ## Sculpted scenery and micro-detail
 
 Trees, rocks, hedges, bushes, logs and grass are built from smooth sculpted lattices (`client/organic.js`): ridged multifractal rock with cleave planes, lumpy foliage clumps, tapered bark trunks with flare and lichen, curved grass blades. Surfaces get vertex-baked weathering (mottle, dirt splash, moss). In the shader (`client/gl.js`) a world-space gradient-noise micro-relief bends normals and mottles albedo near the camera (`MICRO` table), and organic textures bake at 512 px, unblurred, on High quality. Wildwood is roughly 520k triangles and takes a few seconds to build; lower `DETAIL.v` in `client/organic.js` if a device struggles.
+
+## Look, light and music pass
+
+- **Lighting:** sun intensity, shadow contrast and dynamic lights are each about 30% stronger on every map (`client/gl.js`), with a filmic (ACES-style) tone-map, Schlick-fresnel sky reflections and sun-glint on glossy materials (`SPEC` table), warm forward-scattering haze toward the sun, and a soft vignette in matches.
+- **Architecture cleanup:** wall trim (baseboards, cornices, pilasters) was rotated 90 degrees on east/west-facing walls and stuck out as beams; fixed. `enclose()` in `shared/maps.js` now only lifts real partition walls to ceiling height, so crates, sandbags, hedges and barriers stay waist-high instead of becoming 3 m pillars. Floor cables, a floating glow block on the helicopter and the solid-cyan rails and canopy were removed or re-skinned as metal.
+- **Music:** the score is now a cyberpunk synthwave / dark-electro track: 132 bpm in matches (100 bpm in menus), four-on-the-floor kick, claps, rolling 16th bass, arps, detuned lead hooks and snare-roll risers into every 8th bar.
+
+## Fluorescent lighting and security cameras
+
+- **Ceiling lights:** the cone lamps and sweeping flood lights (and their beams) are gone. Each ceiling strip position now holds a two-tube fluorescent fixture that lights the room with a cool white point light; a few flicker (`client/lights.js`, `enclose()` in `shared/maps.js`).
+- **Security cameras:** every match places 2 or 3 cameras at random wall mounts (`shared/cameras.js`, seeded by the server and sent to clients). Each swivels about 100 degrees back and forth, with a red translucent vision cone you can see in the world and as a wedge on the minimap. Anyone inside a cone with a clear line of sight is exposed to everyone on the map for 5 seconds (refreshed while they stay in view): a red EXPOSED marker, a minimap blip, an alarm beep and a toast. Detection is server-authoritative (`tickCameras` in `server/room.js`); spawn-protected players are ignored and dying clears exposure. Tune `CAM` in `shared/cameras.js` (range, cone angle, sweep speed, exposure time). Tests: `test/cameras.js`.
+
+## Lofted gun models
+
+Gun bodies are no longer stacks of rounded boxes. A new primitive, `L(...)` / `genPath` (`client/geom.js`), sweeps a superellipse cross-section along a path with smooth normals and metre-scaled texture coordinates, and `zl` / `vl` / `bl` helpers in `client/guns.js` build tapered receivers, round handguards, contoured pistol grips, curved magazines (AK, MP5, STANAG), shaped wooden stocks and barrel sleeves from real-world proportions (Glock, Colt Python, Desert Eagle, Uzi, MP5, P90, AK-47, M4A1, AUG, Benelli M4, Mossberg 500, SPAS-12, Arctic Warfare, RPG-7, 1911). Rails, serrations, sights, controls and the micro-detail still sit on top. Steel, polymer and walnut textures were re-authored (fine matte stipple, straight grain), and metal reflections are toned down. Handgun slides now extend back over the grip like the real pistols, and the default iron sights have proper bases.

@@ -3,6 +3,7 @@
 
 import { P, raycast, rayAABB, norm3, newBody } from '../shared/physics.js';
 import { getMap, MAP_IDS } from '../shared/maps.js';
+import { buildCameras, camsSee, CAM } from '../shared/cameras.js';
 import {
   WEAPONS, PRIMARY, SIDEARMS, GADGETS, PICKUP_VARIANTS, MODES, PICKUP_RESPAWN, DEFAULT_SETTINGS, MAX_PLAYERS, TICK_RATE, RESPAWN_TIME, PROTECT_TIME,
 } from '../shared/weapons.js';
@@ -158,7 +159,7 @@ export class Room {
 
   // ------------------------------------------------------------ match lifecycle
   matchMsg() {
-    return { t: 'match', map: this.settings.map, mode: this.settings.mode, settings: this.settings, pk: this.pickups.map(s => s.kind), phase: this.phase };
+    return { t: 'match', map: this.settings.map, mode: this.settings.mode, settings: this.settings, pk: this.pickups.map(s => s.kind), phase: this.phase, cams: this.cams || [], camSeed: this.camSeed || 0 };
   }
 
   startMatch() {
@@ -171,6 +172,7 @@ export class Room {
     this.teamScore = [0, 0]; this.mines = []; this.tokens = []; this.projs = []; this.lasers = []; this.winner = null;
     this.streaks.reset();
     this.hillOwner = -2; this.hillAcc = 0;
+    this.camSeed = 1 + Math.floor(Math.random() * 2147483646); this.cams = buildCameras(this.map, this.camSeed); this.camT0 = nowS();   // 2-3 randomly placed security cameras each match
     // pickups
     let kinds = this.map.pickups.map(p => p.kind);
     if (s.items === 'random') for (let i = kinds.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
@@ -188,7 +190,7 @@ export class Room {
     for (const p of this.players.values()) {
       p.kills = p.deaths = p.assists = p.caps = p.returns = p.score = 0;
       p.carrying = -1; p.alive = false; p.owned = new Set(['pistol']); p.minesOut = 0; p.laserOut = 0;
-      p.streak = 0; p.offers = []; p.helmet = false; p.wall = false;
+      p.streak = 0; p.offers = []; p.helmet = false; p.wall = false; p.exposedUntil = 0;
     }
     this.phase = 'countdown'; this.countdownEnd = nowS() + 3; this.timeLeft = s.time;
     this.broadcast(this.matchMsg());
@@ -368,7 +370,7 @@ export class Room {
   }
 
   kill(v, att, wid, head) {
-    v.alive = false; v.hp = 0; v.deaths++; v.respawnAt = nowS() + RESPAWN_TIME; v.ads = false;
+    v.alive = false; v.exposedUntil = 0; v.hp = 0; v.deaths++; v.respawnAt = nowS() + RESPAWN_TIME; v.ads = false;
     const t = nowS();
     const ghost = att && att.unitOnly;                                // killed by the unit of a player who has since left
     if (ghost) att = null;
@@ -634,6 +636,7 @@ export class Room {
       this.tickMines(t);
       this.tickProjectiles(DT, t);
       this.tickLasers(t);
+      this.tickCameras(t);
       this.streaks.tick(DT, t);
       this.tickMode(t);
       if (this.timeLeft <= 0) this.timeUp();
@@ -693,6 +696,20 @@ export class Room {
     this.settings.map = win && MAP_IDS.includes(win) ? win : maps[this.rotation % maps.length];
     this.settings.mode = mode; this.settings.limit = MODES[mode].def;
     this.startMatch();
+  }
+
+  /** Security cameras: anyone inside a cone with a clear line of sight is exposed to the whole map for CAM.expose seconds (refreshed while they stay in view). */
+  tickCameras(t) {
+    if (!this.cams || !this.cams.length) return;
+    const ct = t - this.camT0;
+    for (const p of this.players.values()) {
+      if (!p.alive || t < p.protectUntil) continue;
+      const ci = camsSee(this.map.boxes, this.cams, ct, p.x, p.y, p.z, p.crouch);
+      if (ci < 0) continue;
+      const fresh = !(p.exposedUntil > t);
+      p.exposedUntil = t + CAM.expose;
+      if (fresh) this.emit({ e: 'camspot', id: p.id, c: ci, x: r2(p.x), y: r2(p.y), z: r2(p.z) });
+    }
   }
 
   tickMines(t) {
@@ -766,11 +783,11 @@ export class Room {
         i: p.id, x: r2(p.x), y: r2(p.y), z: r2(p.z), a: r2(p.yaw), p: r2(p.pitch), c: p.crouch ? 1 : 0, l: r2(p.lean),
         h: Math.round(p.hp), r: Math.round(p.armor), w: p.wpn, al: p.alive ? 1 : 0, ad: p.ads ? 1 : 0, pr: t < p.protectUntil ? 1 : 0,
         k: p.kills, d: p.deaths, as: p.assists, cp: p.caps, rt: p.returns, sc: p.score, tm: p.team,
-        cr: p.carrying, gd: p.owned.has('golden') ? 1 : 0, mi: p.mines, lm: p.lasers, kn: p.knives, st: p.streak || 0, hm: p.helmet ? 1 : 0, ww: p.wall ? 1 : 0,
+        ex: p.exposedUntil > t ? 1 : 0, cr: p.carrying, gd: p.owned.has('golden') ? 1 : 0, mi: p.mines, lm: p.lasers, kn: p.knives, st: p.streak || 0, hm: p.helmet ? 1 : 0, ww: p.wall ? 1 : 0,
       });
     }
     const snap = {
-      t: 's', k: this.tick, ph: this.phase, tl: Math.ceil(this.timeLeft), cd: Math.max(0, Math.ceil(this.countdownEnd - t)),
+      t: 's', ct: r2(t - (this.camT0 || t)), k: this.tick, ph: this.phase, tl: Math.ceil(this.timeLeft), cd: Math.max(0, Math.ceil(this.countdownEnd - t)),
       p: players, ts: this.teamScore,
       pk: this.pickups.map(s => s.active ? 1 : 0).join(''),
       m: this.mines.map(m => [m.id, r2(m.x), r2(m.y), r2(m.z), r2(m.nx), r2(m.ny), r2(m.nz), m.team, m.owner, t >= m.armAt ? 1 : 0]),

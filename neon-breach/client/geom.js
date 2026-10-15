@@ -155,6 +155,52 @@ export function genLoft(sections, seg = 18) {
   return b.done();
 }
 
+
+/**
+ * Lofted solid along an arbitrary path. stations: [{ p:[x,y,z], a, b, n }] where a/b are the half-width (world X side) and half-height of a
+ * superellipse cross-section (n = 2 ellipse, ~3 soft rounded rectangle, 5+ squarish), swept along the polyline p. Smooth normals, flat end caps.
+ * Used for gun receivers, stocks, grips, magazines, handguards, barrels and triggers guards.
+ */
+export function genPath(stations, seg = 20, o = null) {
+  const m = stations.length, b = new Builder(), rows = [], tmp = [];
+  for (let j = 0; j < m; j++) {
+    const s = stations[j], p0 = stations[Math.max(0, j - 1)].p, p1 = stations[Math.min(m - 1, j + 1)].p;
+    let t = norm(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+    let r = Math.abs(t[0]) > 0.95 ? [0, 0, 1] : [1, 0, 0];
+    const d = r[0] * t[0] + r[1] * t[1] + r[2] * t[2]; r = norm(r[0] - t[0] * d, r[1] - t[1] * d, r[2] - t[2] * d);
+    const u = [r[1] * t[2] - r[2] * t[1], r[2] * t[0] - r[0] * t[2], r[0] * t[1] - r[1] * t[0]], e = 2 / (s.n || 2.6);
+    const row = [];
+    for (let i = 0; i <= seg; i++) {
+      const th = i / seg * Math.PI * 2, c = Math.cos(th), sn = Math.sin(th);
+      const x = Math.sign(c) * Math.pow(Math.abs(c), e) * s.a, y = Math.sign(sn) * Math.pow(Math.abs(sn), e) * s.b;
+      row.push([s.p[0] + r[0] * x + u[0] * y, s.p[1] + r[1] * x + u[1] * y, s.p[2] + r[2] * x + u[2] * y]);
+    }
+    rows.push(row); tmp.push(t);
+  }
+  const uvs = (o && o.uvScale) || 18, acc = [0], circ = stations.map(s => Math.PI * 2 * Math.sqrt((s.a * s.a + s.b * s.b) / 2) * uvs);   // texture coordinates in metres so grain keeps its real size
+  for (let j = 1; j < m; j++) acc.push(acc[j - 1] + Math.hypot(stations[j].p[0] - stations[j - 1].p[0], stations[j].p[1] - stations[j - 1].p[1], stations[j].p[2] - stations[j - 1].p[2]) * uvs);
+  const N = (j, i) => {
+    const i0 = (i - 1 + seg) % seg, i1 = (i + 1) % seg, j0 = Math.max(0, j - 1), j1 = Math.min(m - 1, j + 1);
+    const du = [rows[j][i1][0] - rows[j][i0][0], rows[j][i1][1] - rows[j][i0][1], rows[j][i1][2] - rows[j][i0][2]];
+    const dv = [rows[j1][i][0] - rows[j0][i][0], rows[j1][i][1] - rows[j0][i][1], rows[j1][i][2] - rows[j0][i][2]];
+    const nx = dv[1] * du[2] - dv[2] * du[1], ny = dv[2] * du[0] - dv[0] * du[2], nz = dv[0] * du[1] - dv[1] * du[0], l = Math.hypot(nx, ny, nz);
+    return l < 1e-12 ? tmp[j] : [nx / l, ny / l, nz / l];
+  };
+  // orient normals outward: compare with the direction from the section centre
+  const vert = (j, i) => {
+    let n = N(j, i); const c = stations[j].p, q = rows[j][i];
+    if ((q[0] - c[0]) * n[0] + (q[1] - c[1]) * n[1] + (q[2] - c[2]) * n[2] < 0) n = [-n[0], -n[1], -n[2]];
+    return V(q, n, [i / seg * circ[j], acc[j]]);
+  };
+  for (let j = 0; j < m - 1; j++) for (let i = 0; i < seg; i++) b.quad(vert(j, i), vert(j, i + 1), vert(j + 1, i + 1), vert(j + 1, i));
+  for (const [j, sg] of [[0, -1], [m - 1, 1]]) {
+    const s = stations[j]; if (s.a < 0.0012 || s.b < 0.0012) continue;
+    const n = [tmp[j][0] * sg, tmp[j][1] * sg, tmp[j][2] * sg];
+    for (let i = 0; i < seg; i++) b.tri(V(s.p, n, [0.5, 0.5]), V(rows[j][i], n, [0.5, 0.5]), V(rows[j][i + 1], n, [0.5, 0.5]));
+  }
+  return b.done();
+}
+
 // ---------------------------------------------------------------- transforms
 /** 3x3 rotation (column-major, like WebGL) from yaw (Y), pitch (X), roll (Z): R = Ry * Rx * Rz. */
 export function rotYXZ(out, yaw, pitch, roll = 0) {

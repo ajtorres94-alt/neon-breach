@@ -6,19 +6,19 @@ import { rockVariant, bushClump, trunkMesh } from './organic.js';
 
 // kind -> [count] per map. Floor items are low; wall items are listed separately.
 const PROFILES = {
-  foundry:   { floor: { pallet: 9, cardboard: 16, tire: 8, bucket: 8, can: 22, papers: 16, toolbox: 5, cone: 8, puddle: 7, oil: 7, rubble: 8, plank: 6, cable: 7, crateS: 6 },
+  foundry:   { floor: { pallet: 9, cardboard: 16, tire: 8, bucket: 8, can: 22, papers: 16, toolbox: 5, cone: 8, puddle: 7, oil: 7, rubble: 8, plank: 6, crateS: 6 },
                wall: { vent: 12, sign: 10, lamp: 10, ext: 5, poster: 4 }, rubble: 'concrete' },
   atrium:    { floor: { papers: 18, rubble: 10, bottle: 10, can: 6, cardboard: 6, puddle: 3, plank: 3 },
                wall: { banner: 14, lamp: 14, poster: 4, ext: 3 }, rubble: 'marble' },
   courtyard: { floor: { tuft: 70, flower: 36, rock: 14, bush: 12, log: 4, bucket: 4, leaf: 24, puddle: 4, rubble: 6 },
                wall: { lamp: 10, poster: 3, sign: 2 }, rubble: 'stone' },
-  reactor:   { floor: { cable: 14, canister: 9, papers: 10, puddle: 8, oil: 6, crateS: 8, can: 10, plank: 3, rubble: 5 },
+  reactor:   { floor: { canister: 9, papers: 10, puddle: 8, oil: 6, crateS: 8, can: 10, plank: 3, rubble: 5 },
                wall: { vent: 16, sign: 14, lamp: 14, ext: 5 }, rubble: 'metal' },
   crosswire: { floor: { tire: 14, cone: 10, rubble: 22, can: 22, bottle: 10, papers: 24, cardboard: 14, pallet: 7, puddle: 9, oil: 6, sand: 8, plank: 8, bucket: 4, toolbox: 3 },
                wall: { poster: 16, vent: 12, lamp: 8, ext: 5, graffiti: 10, sign: 6 }, rubble: 'brick' },
   wildwood:  { floor: { tuft: 110, flower: 50, rock: 22, bush: 14, log: 6, leaf: 36, bucket: 4, puddle: 4, hayS: 8, plank: 4 },
                wall: { lamp: 6, sign: 6 }, rubble: 'stone' },
-  wreckage:  { floor: { plank: 14, plate: 14, rubble: 24, tire: 14, cone: 6, can: 18, papers: 12, puddle: 8, oil: 8, cable: 6, cardboard: 6, bucket: 4, burnt: 8 },
+  wreckage:  { floor: { plank: 14, plate: 14, rubble: 24, tire: 14, cone: 6, can: 18, papers: 12, puddle: 8, oil: 8, cardboard: 6, bucket: 4, burnt: 8 },
                wall: { poster: 8, vent: 8, lamp: 6, ext: 3, graffiti: 8, sign: 4 }, rubble: 'concrete' },
 };
 
@@ -245,10 +245,10 @@ export function scatterClutter(map, H) {
     const yaw = horiz ? 0 : Math.PI / 2, R = yawR(yaw), cx = horiz ? (b.x0 + b.x1) / 2 : (ns[0] > 0 ? b.x1 : b.x0), cz = horiz ? (ns[1] > 0 ? b.z1 : b.z0) : (b.z0 + b.z1) / 2;
     const off = (d) => horiz ? [cx, cz + ns[1] * d] : [cx + ns[0] * d, cz];
     const base = off(0.02), top = off(0.025);
-    slab('plain', [base[0], 0.11, base[1]], R, horiz ? len : 0.04, 0.22, horiz ? 0.04 : len, trimC.map(c => c * 0.8));
-    slab('plain', [top[0], hgt - 0.12, top[1]], R, horiz ? len : 0.05, 0.1, horiz ? 0.05 : len, trimC);
-    slab('plain', [top[0], hgt - 0.2, top[1]], R, horiz ? len : 0.07, 0.04, horiz ? 0.07 : len, trimC.map(c => c * 0.9));
-    if (len > 5) for (let u = 2; u < len - 1; u += 4) { const q = horiz ? [b.x0 + u, cz + ns[1] * 0.04] : [cx + ns[0] * 0.04, b.z0 + u]; slab('plain', [q[0], hgt / 2, q[1]], R, horiz ? 0.34 : 0.08, hgt - 0.3, horiz ? 0.08 : 0.34, trimC.map(c => c * 0.95)); }
+    slab('plain', [base[0], 0.11, base[1]], R, len, 0.22, 0.04, trimC.map(c => c * 0.8));
+    slab('plain', [top[0], hgt - 0.12, top[1]], R, len, 0.1, 0.05, trimC);
+    slab('plain', [top[0], hgt - 0.2, top[1]], R, len, 0.04, 0.07, trimC.map(c => c * 0.9));
+    if (len > 5) for (let u = 2; u < len - 1; u += 4) { const q = horiz ? [b.x0 + u, cz + ns[1] * 0.04] : [cx + ns[0] * 0.04, b.z0 + u]; slab('plain', [q[0], hgt / 2, q[1]], R, 0.34, hgt - 0.3, 0.08, trimC.map(c => c * 0.95)); }
   }
   const WALL = {
     poster(P) {
