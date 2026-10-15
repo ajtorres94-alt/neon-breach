@@ -137,6 +137,8 @@ $('btn-copy').addEventListener('click', async () => {
 });
 
 function opSwatch(i) {
+  const pics = game.getPortraits && game.getPortraits();
+  if (pics && pics[i]) return `<img class="portrait" alt="" src="${pics[i]}">`;
   const o = OPERATORS[i], c = (a) => `rgb(${a.map(v => Math.round(v * 255)).join(',')})`;
   return `<div class="fig" style="background:${c(o.suit)};--skin:${c(o.skin)};--trim:${c(o.trim)}"></div>`;
 }

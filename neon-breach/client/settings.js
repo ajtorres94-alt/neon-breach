@@ -2,7 +2,7 @@
 
 export const ACTIONS = [
   ['forward', 'Move forward'], ['back', 'Move back'], ['left', 'Strafe left'], ['right', 'Strafe right'],
-  ['jump', 'Jump'], ['crouch', 'Crouch (hold)'], ['fire', 'Fire'], ['ads', 'Aim down sights'],
+  ['jump', 'Jump'], ['crouch', 'Crouch (hold)'], ['sprint', 'Sprint (hold)'], ['fire', 'Fire'], ['ads', 'Aim down sights'],
   ['reload', 'Reload'], ['mine', 'Place proximity mine'], ['laser', 'Place laser mine'], ['knife', 'Throw knife'], ['melee', 'Melee'], ['leanL', 'Lean left'], ['leanR', 'Lean right'],
   ['next', 'Next weapon'], ['prev', 'Previous weapon'], ['call', 'Callout wheel (hold)'], ['score', 'Scoreboard (hold)'],
 ];
@@ -18,7 +18,7 @@ export const DEFAULTS = {
   hud: { minimap: true, mapSize: 1, mapRotate: true },
   access: { colorVision: 'none', shapeCues: false, reduceShake: false },
   keys: {
-    forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'KeyC',
+    forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'KeyC', sprint: 'ShiftLeft',
     fire: 'Mouse0', ads: 'Mouse2', reload: 'KeyR', mine: 'KeyF', laser: 'KeyT', knife: 'KeyX', melee: 'KeyV', leanL: 'KeyQ', leanR: 'KeyE',
     next: 'Wheel+', prev: 'Wheel-', call: 'KeyG', score: 'Tab',
   },

@@ -274,7 +274,7 @@ export class Room {
     const x = +m.x, y = +m.y, z = +m.z;
     if (![x, y, z].every(Number.isFinite)) return;
     const dist = Math.hypot(x - p.x, z - p.z);
-    const allowed = P.walk * 1.6 * dt + 1.2;
+    const allowed = P.sprint * 1.5 * dt + 1.2;
     if (dist > allowed + 3 || Math.abs(y - p.y) > 14 * dt + 4) { this.send(p, { t: 'tp', x: p.x, y: p.y, z: p.z }); return; }
     p.x = Math.max(-28, Math.min(28, x)); p.z = Math.max(-28, Math.min(28, z)); p.y = Math.max(-10, Math.min(30, y));
     p.yaw = +m.a || 0; p.pitch = Math.max(-1.6, Math.min(1.6, +m.p || 0));

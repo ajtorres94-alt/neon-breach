@@ -43,7 +43,7 @@ export function drawSoldier(R, pl, t, o) {
   const amp = Math.min(1, pl.speed / 4), ph = pl.walk * 3;
   // ---- legs (2-bone IK with a walk cycle)
   const hipY = 0.93 * ch - (pl.crouch ? 0.04 : 0), fwd = [-sy, 0, -cy], L1 = 0.44, L2 = 0.45;
-  const pit = pl.crouch ? -0.35 : -0.05 - amp * 0.06;                       // torso pitch (forward lean)
+  const pit = pl.crouch ? -0.35 : -0.05 - amp * 0.06 - Math.max(0, Math.min(1, (pl.speed - 8.3) / 2)) * 0.14;                       // torso pitch (forward lean)
   const cp = Math.cos(pit), sp = Math.sin(pit);
   const TP = (lx, ly, lz) => wp(lean + lx, hipY + (cp * ly - sp * lz), sp * ly + cp * lz);   // torso-space -> world
   R.texture(camo, 2);
@@ -123,7 +123,7 @@ export function drawSoldier(R, pl, t, o) {
   const shR = TP(0.215, shY, 0), shL = TP(-0.215, shY, 0);
   const A = (lx, ly, lz) => { const dy = ly - (hipY + 0.5), dz = lz; return wp(lean + lx, hipY + 0.5 + dy * cpp - dz * spp, dy * spp + dz * cpp); };
   const ox = 0.2, oy = hipY + 0.42 - 0.0, oz = -0.34;
-  drawGun(R, gun, { pos: (x, y, z) => A(ox + x, oy + y, oz + z), yaw: pl.ra, pitch: pl.rp, accent: o.accent, gold: o.gold });
+  drawGun(R, gun, { origin: A(ox, oy, oz), yaw: pl.ra, pitch: pl.rp, accent: o.accent, gold: o.gold, far: !!o.far });
   const handR = A(ox, oy - 0.07, oz + gun.grip + 0.02), handL = A(ox - 0.02, oy - 0.035, oz + gun.fore);
   const l1 = 0.3, l2 = 0.29;
   const elR = ik(shR, handR, l1, l2, [0.5 * cy, -1, -0.5 * sy]), elL = ik(shL, handL, l1, l2, [-0.5 * cy, -1, 0.5 * sy]);

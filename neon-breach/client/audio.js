@@ -41,6 +41,7 @@ export function initAudio() {
   shaper.curve = curve; shaper.oversample = '2x';
   gunBus = ctx.createGain(); gunBus.gain.value = 0.9; gunBus.connect(shaper); shaper.connect(sfx);
   setVolumes(vol);
+  loadSamples();
 }
 
 export function setVolumes(v) {
@@ -181,10 +182,38 @@ const SOUNDS = {
   click: (t) => { noise('ui', t, 0.02, 0.18, 'bandpass', 3000, 2000, 0, { q: 3, a: 0.0005 }); tone('ui', t, 700, 500, 0.03, 0.08, 'sine'); },
 };
 
+// ------------------------------------------------------------------ optional recorded samples
+// Drop licensed / royalty-free audio files into client/sounds/ and list them in client/sounds/manifest.json:
+//   { "gun:m4": ["m4_1.ogg", "m4_2.ogg"], "reload": "reload.wav", "boom": "explosion.ogg" }
+// Any sound with an entry plays the recording (random variant, slight pitch jitter) instead of the synthesised one.
+const samples = new Map();
+async function loadSamples() {
+  try {
+    const r = await fetch('sounds/manifest.json', { cache: 'no-cache' }); if (!r.ok) return;
+    const man = await r.json();
+    for (const [name, spec] of Object.entries(man)) {
+      const files = (Array.isArray(spec) ? spec : [spec]).filter(f => typeof f === 'string' && /^[\w .\-/]+$/.test(f) && !f.includes('..'));
+      const bufs = [];
+      for (const f of files) { try { const rr = await fetch('sounds/' + f); if (!rr.ok) continue; bufs.push(await ctx.decodeAudioData(await rr.arrayBuffer())); } catch { /* skip bad file */ } }
+      if (bufs.length) samples.set(name, bufs);
+    }
+  } catch { /* no manifest: everything stays synthesised */ }
+}
+function playSample(name, v, p) {
+  const bufs = samples.get(name); if (!bufs) return false;
+  const src = ctx.createBufferSource(); src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
+  src.playbackRate.value = 0.97 + Math.random() * 0.06;
+  const g = ctx.createGain(); g.gain.value = v; src.connect(g);
+  const ui = ['hit', 'headshot', 'kill', 'pickup', 'weapon', 'flag', 'capture', 'lost', 'tick', 'callout', 'vote', 'start', 'win', 'click'].includes(name);
+  out(g, ui ? 'ui' : 'sfx', p, ui ? 0 : 0.25);
+  src.start(); return true;
+}
+
 /** Play a named sound. opts: {vol (0..1), pan (-1..1)} */
 export function play(name, opts = {}) {
   if (!ctx || !buses) return;
   const t = ctx.currentTime, v = opts.vol == null ? 1 : opts.vol, p = opts.pan || 0;
+  if (samples.size && playSample(name, v, p)) return;
   if (name.startsWith('gun:')) { const g = GUN[name.slice(4)]; if (g) g(t, v, p); return; }
   const s = SOUNDS[name]; if (s) s(t, v, p);
 }

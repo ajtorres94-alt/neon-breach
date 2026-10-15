@@ -41,6 +41,7 @@ class MB {
     for (let i = 0; i < n; i++) {
       const along = (i + 0.5) * run;
       this.b(x + dx * along, z + dz * along, dx !== 0 ? run : width, dz !== 0 ? run : width, 0, rise * (i + 1) / n, mat);
+      this.boxes[this.boxes.length - 1].st = true;
     }
     return this;
   }
@@ -386,10 +387,36 @@ function spawnAt(boxes, x, z, yawFrom) {
   return { x, y, z, yaw: Math.atan2(x - yawFrom[0], z - yawFrom[1]) };
 }
 
+/**
+ * Turn an open arena into an enclosed hall: nearly all waist-high cover becomes full-height partitions, the perimeter walls rise to a
+ * ceiling, and the ceiling gets light strips. Deterministic. Stairs, pads, rails, props with decor and boxes near objectives are kept.
+ */
+function enclose(m) {
+  const bx = m.boxes, keepPts = [];
+  for (const p of m.pickups) keepPts.push([p.x, p.z, 1.0]);
+  for (const s of m.spawnX) { keepPts.push([s, 24, 1.4]); keepPts.push([s, -24, 1.4]); }
+  for (const [x, z] of m.ffa) keepPts.push([x, z, 1.4]);
+  keepPts.push([m.base.x, m.base.z, 2.4], [m.base.x, -m.base.z, 2.4], [m.golden.x, m.golden.z, 1.4], [m.hill.x, m.hill.z, 1.2]);
+  const hsh = (i) => { let h = Math.imul(i + 1, 2654435761) ^ Math.imul(m.id.length * 97 + 13, 40503); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) % 1000 / 1000; };
+  bx.forEach((b, i) => {
+    if (i < 5 || b.vis === false || b.st || b.y0 > 0.05 || b.y1 < 0.75 || b.y1 > 1.65 || b.mat === 'accent' || b.mat === 'glow') return;
+    if (keepPts.some(([x, z, r]) => x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r)) return;
+    if (hsh(i) < 0.12) return;                                         // a few low pieces survive
+    b.y1 = 2.7 + hsh(i + 500) * 0.7;
+  });
+  let top = 0; for (let i = 5; i < bx.length; i++) if (bx[i].y1 < 20) top = Math.max(top, bx[i].y1);
+  const roofY = Math.max(9, Math.ceil(top + 1));
+  for (let i = 1; i <= 4; i++) bx[i].y1 = roofY;
+  bx.push({ x0: -W - 1, x1: W + 1, z0: -W - 1, z1: W + 1, y0: roofY, y1: roofY + 0.6, mat: 'dark', roof: true });
+  for (const x of [-18, -6, 6, 18]) for (const z of [-21, -7, 7, 21]) bx.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 3, z1: z + 3, y0: roofY - 0.2, y1: roofY, mat: 'glow' });
+  m.roofY = roofY;
+}
+
 export function getMap(id) {
   if (!BUILDERS[id]) id = 'foundry';
   if (cache[id]) return cache[id];
   const m = BUILDERS[id]();
+  enclose(m);
   const bx = m.boxes;
   const t0 = m.spawnX.map((x, i) => spawnAt(bx, x, 24 + (i % 2) * 0.01, [0, 0]));
   const t1 = m.spawnX.map((x) => spawnAt(bx, x, -24, [0, 0]));

@@ -86,3 +86,9 @@ Set dressing lives in `client/clutter.js`: per-map debris, tyres, cones, pallets
 
 ### Audio
 `client/audio.js` synthesises everything (no asset files): layered gunshots (supersonic crack, blast body, sub thump, reverberant tail) through a soft-clip punch stage, metallic reload and bolt foley, convolution reverb, weighty footsteps/impacts/explosions, and a cinematic score (string pads, brass swells, timpani/taiko, low ostinato in matches). Sound volumes are in Settings.
+
+### Movement, maps and recorded sounds
+- Walking speed is 8 m/s; hold **Shift** (or click the left stick) to sprint at 10.4 m/s (+30%, forward only, not while crouched or aiming). Rebind in Settings.
+- Every map is enclosed by a ceiling with light strips; almost all waist-high cover is now full-height partitions (a few low pieces remain). This is applied in `enclose()` in `shared/maps.js`.
+- Guns are built from 100-260 parts each (rails, serrations, vents, sights, controls...) baked into merged meshes with a distant low-detail version.
+- To use recorded sound effects, see `client/sounds/README.md` (only audio you have rights to use).

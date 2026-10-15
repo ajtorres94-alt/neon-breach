@@ -79,7 +79,7 @@ export function buildMapMesh(map) {
   // ---- plain boxes: subdivided faces
   boxes.forEach((b, bi) => {
     if (b.vis === false || b.y1 - b.y0 < 0.001) return;
-    const mat = b.mat in TEX_SCALE ? b.mat : 'wall', arr = out(mat);
+    const mat = b.roof ? 'ceil' : b.mat in TEX_SCALE ? b.mat : 'wall', arr = out(mat);
     const vari = 0.95 + hash(bi, 7) * 0.1;
     const rr = ROUNDED[mat];
     if (rr && Math.min(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0) > rr * 1.2) {

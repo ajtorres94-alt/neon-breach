@@ -290,7 +290,7 @@ export function createRenderer(canvas, opts = {}) {
     for (const [mat, arr] of Object.entries(groups)) {
       if (!arr.length) continue;
       const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW);
-      state.groups.push({ mat, buf, count: arr.length / G.STRIDE, emit: mat === 'glow' ? 1 : 0 });
+      state.groups.push({ mat, tex: mat === 'ceil' ? 'concrete' : mat, noShadow: mat === 'ceil', buf, count: arr.length / G.STRIDE, emit: mat === 'glow' ? 1 : 0 });
     }
     state.theme = map.theme;
     state.lightVP = lightMatrix(map.theme.sun, { x0: -31, x1: 31, y0: -1.5, y1: Math.max(maxY, 9) + 3, z0: -31, z1: 31 });
@@ -303,6 +303,7 @@ export function createRenderer(canvas, opts = {}) {
     gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT);
     gl.useProgram(shp.p); gl.uniformMatrix4fv(shp.u.uLightVP, false, state.lightVP);
     for (const g of state.groups) {
+      if (g.noShadow) continue;
       gl.bindBuffer(gl.ARRAY_BUFFER, g.buf);
       gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, STRIDE_B, 0);
       gl.disableVertexAttribArray(1); gl.disableVertexAttribArray(2); gl.disableVertexAttribArray(3);
@@ -334,6 +335,7 @@ export function createRenderer(canvas, opts = {}) {
     state.shadowQ = o.shadowQuality === 0 ? 0 : 1;
     const dim = o.weather === 'rain' ? 0.72 : 1;
     const proj = M4.perspective(M4.ident(), cam.fov, aspect, 0.06, 400);
+    state.hideCeil = !!cam.orbit || cam.y > 10;
     const view = M4.view(M4.ident(), cam.x, cam.y, cam.z, cam.yaw, cam.pitch, cam.roll || 0);
     M4.mul(state.vp, proj, view);
     state.dim = dim; state.curTex = '';
@@ -365,7 +367,8 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform1f(U.uShadowOn, shadowOk ? 1 : 0); gl.uniform1f(U.uShadowTexel, 1 / SHADOW_SIZE); gl.uniform1f(U.uShadowQ, state.shadowQ);
     setCommon(dim);
     for (const g of state.groups) {
-      setTex(g.mat); gl.uniform1f(U.uEmit, g.emit);
+      if (g.noShadow && state.hideCeil) continue;
+      setTex(g.tex || g.mat); gl.uniform1f(U.uEmit, g.emit);
       bindMesh(g); gl.drawArrays(gl.TRIANGLES, 0, g.count);
     }
     gl.uniform1f(U.uEmit, 0);
@@ -393,6 +396,14 @@ export function createRenderer(canvas, opts = {}) {
       gl.drawArrays(gl.TRIANGLES, 0, m.count);
       gl.uniform1f(U.uOutlineOn, 0); gl.uniform1f(U.uOutline, 0); gl.cullFace(gl.BACK);
     }
+  }
+  /** Draw a pre-baked mesh whose colours live in its vertices (no tint). */
+  function drawBaked(m, x, y, z, Rm, spec = 0, emit = 0) {
+    if (boundMesh !== m) { bindMesh(m); boundMesh = m; }
+    setModel(x, y, z, Rm || IDENT3, 1, 1, 1);
+    gl.uniform1f(U.uUseTint, 0); gl.uniform1f(U.uEmit, emit); gl.uniform1f(U.uAlpha, 1); gl.uniform1f(U.uFlash, 0); gl.uniform1f(U.uSpec, spec);
+    gl.drawArrays(gl.TRIANGLES, 0, m.count);
+    gl.uniform1f(U.uUseTint, 1);
   }
   /** Set the dynamic-object look: outline width (metres, 0 = off) and rim-light strength. */
   function style(o = {}) { state.outlineW = o.outline || 0; gl.uniform1f(U.uRim, o.rim || 0); }
@@ -479,7 +490,7 @@ export function createRenderer(canvas, opts = {}) {
   }
 
   return { gl, setMap, resize, begin, box, rbox, boxRot, limb, tube, sphere, blob, texture, rotate, drawMesh, meshes, rboxMesh, capsuleMesh,
-    transparent, lines, style, loftMesh, span, beginViewmodel, endViewmodel, project, state, shadowOk, uploadTextures };
+    transparent, lines, style, loftMesh, drawBaked, span, beginViewmodel, endViewmodel, project, state, shadowOk, uploadTextures };
 }
 
 const norm3 = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };

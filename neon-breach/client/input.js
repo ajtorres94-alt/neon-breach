@@ -59,7 +59,7 @@ export function releaseLock() { if (document.pointerLockElement) document.exitPo
 
 // ------------------------------------------------------------------ gamepad
 const PAD_MAP = {
-  jump: 0, crouch: 1, reload: 2, next: 3, mine: 4, knife: 5, ads: 6, fire: 7, score: 8, pause: 9, call: 12, laser: 10, melee: 11, leanL: 14, leanR: 15,
+  jump: 0, crouch: 1, reload: 2, next: 3, mine: 4, knife: 5, ads: 6, fire: 7, score: 8, pause: 9, call: 12, laser: 13, sprint: 10, melee: 11, leanL: 14, leanR: 15,
 };
 function padButton(pad, idx) { const b = pad.buttons[idx]; return b ? (b.pressed || b.value > 0.5) : false; }
 function padDown(pad, action) {

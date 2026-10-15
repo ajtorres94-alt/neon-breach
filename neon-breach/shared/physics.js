@@ -5,7 +5,7 @@
 
 export const P = Object.freeze({
   r: 0.35, h: 1.8, hc: 1.15, eye: 1.62, eyec: 1.0,
-  step: 0.55, walk: 6.4, crouchSpeed: 3.2, jump: 8.2, gravity: 24,
+  step: 0.55, walk: 8.0, crouchSpeed: 4.0, sprint: 10.4, jump: 8.2, gravity: 24,
 });
 
 const E = 1e-4;
@@ -51,6 +51,7 @@ function stepOnce(boxes, s, inp, dt) {
   const len = Math.hypot(wx, wz);
   if (len > 1) { wx /= len; wz /= len; }
   let sp = s.crouch ? P.crouchSpeed : P.walk;
+  if (inp.sprint && inp.f > 0.1 && !s.crouch && !inp.ads) sp = P.sprint;       // sprint: +30% over walking, forward only
   if (inp.ads) sp *= 0.7;
   const acc = (s.grounded ? 60 : 14) * dt;
   s.vx = approach(s.vx, wx * sp, acc);

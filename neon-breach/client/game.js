@@ -50,6 +50,7 @@ const S = {
   calls: [], wheel: { open: false, x: 0, y: 0, sel: -1, shown: -2 },
 };
 game.S = S;
+game.getPortraits = () => getPortraits();
 
 // ------------------------------------------------------------------ renderer / canvas sizing
 function resizeAll() {
@@ -575,18 +576,20 @@ function updateLocal(dt, t) {
 
   // movement
   if (S.alive && S.phase !== 'ended') {
-    let f = 0, r = 0, jump = false, crouch = false;
+    let f = 0, r = 0, jump = false, crouch = false, sprint = false;
     if (ctl) {
       f = (actionDown('forward') ? 1 : 0) - (actionDown('back') ? 1 : 0) - input.pad.ly;
       r = (actionDown('right') ? 1 : 0) - (actionDown('left') ? 1 : 0) + input.pad.lx;
       jump = actionDown('jump'); crouch = actionDown('crouch');
+      sprint = actionDown('sprint') && f > 0.3 && !ads && !crouch;
     }
     const wasG = b.grounded, vy0 = b.vy;
-    stepBody(game.map.boxes, b, { f: clamp(f, -1, 1), r: clamp(r, -1, 1), yaw: S.yaw, jump, crouch, ads }, dt);
+    stepBody(game.map.boxes, b, { f: clamp(f, -1, 1), r: clamp(r, -1, 1), yaw: S.yaw, jump, crouch, ads, sprint }, dt);
+    S.sprintT = lerp(S.sprintT || 0, sprint && Math.hypot(b.vx, b.vz) > 5 ? 1 : 0, 1 - Math.exp(-dt * 9));
     if (!wasG && b.grounded && vy0 < -5) { audio.play('land', { vol: clamp(-vy0 / 14, 0.2, 1) }); S.landDip = clamp(-vy0 / 40, 0.05, 0.25); }
     if (wasG && !b.grounded && b.vy > 3) audio.play('jump');
     const sp = Math.hypot(b.vx, b.vz);
-    if (b.grounded && sp > 1) { S.stepDist += sp * dt; if (S.stepDist > (b.crouch ? 2.6 : 2.0)) { S.stepDist = 0; audio.play('step', { vol: b.crouch ? 0.3 : 1 }); } S.bob += sp * dt * 1.7; }
+    if (b.grounded && sp > 1) { S.stepDist += sp * dt; if (S.stepDist > (b.crouch ? 2.8 : S.sprintT > 0.5 ? 2.6 : 2.2)) { S.stepDist = 0; audio.play('step', { vol: b.crouch ? 0.3 : 1 }); } S.bob += sp * dt * 1.7; }
     const leanT = ctl ? (actionDown('leanR') ? 1 : 0) - (actionDown('leanL') ? 1 : 0) : 0;
     S.lean = leanT; S.leanVis = lerp(S.leanVis, S.lean, 1 - Math.exp(-dt * 14));
     S.eyeH = lerp(S.eyeH, b.crouch ? P.eyec : P.eye, 1 - Math.exp(-dt * 16));
@@ -637,7 +640,7 @@ function computeCamera(dt, t) {
   const baseV = 2 * Math.atan(Math.tan(baseH / 2) / aspect);
   const wDef = WEAPONS[S.cur] || WEAPONS.pistol;
   const zoom = lerp(1, wDef.zoom, S.adsT);
-  let fov = 2 * Math.atan(Math.tan(baseV / 2) / zoom);
+  let fov = 2 * Math.atan(Math.tan(baseV / 2) / zoom) * (1 + 0.05 * (S.sprintT || 0));
   const b = S.body;
   if (game.view !== 'match') {
     // slow orbit around the map for the menu / lobby backdrop
@@ -654,7 +657,7 @@ function computeCamera(dt, t) {
   }
   const e = eyePos();
   let bobY = 0, bobX = 0;
-  if (!settings.access.reduceShake && b.grounded) { const sp = Math.min(1, Math.hypot(b.vx, b.vz) / 6.4); bobY = Math.sin(S.bob * 2) * 0.025 * sp; bobX = Math.cos(S.bob) * 0.012 * sp; }
+  if (!settings.access.reduceShake && b.grounded) { const sp = Math.min(1, Math.hypot(b.vx, b.vz) / 8); bobY = Math.sin(S.bob * 2) * 0.025 * sp; bobX = Math.cos(S.bob) * 0.012 * sp; }
   const sh = settings.access.reduceShake ? 0 : S.shake;
   const jx = (Math.random() - 0.5) * 0.02 * sh, jy = (Math.random() - 0.5) * 0.02 * sh;
   return { x: e[0] + Math.cos(S.yaw) * bobX, y: e[1] + bobY - S.landDip, z: e[2] - Math.sin(S.yaw) * bobX, yaw: S.yaw + jx, pitch: S.pitch + jy, roll: -S.leanVis * 0.13, fov };
@@ -665,7 +668,7 @@ function drawViewmodel(t, cam) {
   if (!S.alive || game.view !== 'match' || window.__showcase) return;
   const id = S.cur, w = WEAPONS[id], gun = GUNS[id]; if (!gun) return;
   if (id === 'sniper' && S.adsT > 0.7) return;                     // scope overlay replaces the model
-  const b = S.body, sp = Math.min(1, Math.hypot(b.vx, b.vz) / 6.4) * (b.grounded ? 1 : 0.3);
+  const b = S.body, sp = Math.min(1, Math.hypot(b.vx, b.vz) / 8) * (b.grounded ? 1 : 0.3);
   const bob = settings.access.reduceShake ? 0 : 1;
   const a = S.adsT;
   let x = lerp(0.19, 0, a), y = lerp(-0.2, -0.105, a), z = lerp(-0.38, -0.3, a);
@@ -675,13 +678,14 @@ function drawViewmodel(t, cam) {
   const tt = now();
   if (S.reloadEnd) { const prog = 1 - (S.reloadEnd - tt) / w.reload, dip = Math.sin(clamp(prog, 0, 1) * Math.PI); y -= dip * 0.14; tilt -= dip * 0.5; x += dip * 0.04; }
   if (tt < S.switchEnd) { const p = (S.switchEnd - tt) / 0.3; y -= p * 0.18; tilt -= p * 0.4; }
+  { const sr = S.sprintT || 0; x += sr * 0.1; y -= sr * 0.06; z += sr * 0.03; tilt -= sr * 0.5; }                // gun lowered and angled while sprinting
   const cp = Math.cos(tilt), sp2 = Math.sin(tilt);
   R.beginViewmodel(Math.max(0.6, cam.fov * 0.62 + 0.1));
   const accent = hex(w.color), op = OPERATORS[settings.op % OPERATORS.length], skin = op.skin;
   const gold = id === 'golden';
   // local (weapon-space) point -> view space, rotated about X by `tilt`
   const P = (lx, ly, lz) => [x + lx, y + ly * cp - lz * sp2, z + ly * sp2 + lz * cp];
-  drawGun(R, gun, { pos: P, yaw: 0, pitch: tilt, accent, gold });
+  drawGun(R, gun, { origin: P(0, 0, 0), yaw: 0, pitch: tilt, accent, gold });
   const mp = (tt - S.meleeAt) / 0.35;
   if (mp >= 0 && mp < 1) {                                          // knife slash (also used for the throw)
     const sw = Math.sin(mp * Math.PI), kx = lerp(0.34, -0.2, mp), ky = -0.12 + sw * 0.1, kz = -0.42 - sw * 0.1, yw = lerp(-0.9, 0.9, mp);
@@ -719,7 +723,7 @@ function drawPlayer(pl, t, cam) {
   const tc = tm ? ti.rgb : op.trim;
   const flash = (S.flashRemote && S.flashRemote.get(pl.id)) > t;
   const w = WEAPONS[pl.wpn] || WEAPONS.pistol;
-  drawSoldier(R, pl, t, { op, tc, tm, gun: GUNS[pl.wpn] || GUNS.pistol, accent: hex(w.color), gold: pl.wpn === 'golden', flash });
+  drawSoldier(R, pl, t, { op, tc, tm, gun: GUNS[pl.wpn] || GUNS.pistol, accent: hex(w.color), gold: pl.wpn === 'golden', flash, far: Math.hypot(pl.rx - cam.x, pl.rz - cam.z) > 14 });
   if (!pl.al) return;
   const ch = pl.crouch ? 0.72 : 1, cy = Math.cos(pl.ra), sy = Math.sin(pl.ra);
   const wp = (lx, ly, lz) => [pl.rx + cy * lx + sy * lz, pl.ry + ly, pl.rz - sy * lx + cy * lz];
@@ -733,7 +737,7 @@ function drawWorldObjects(t, cam) {
   const mp = game.map; if (!mp || game.view !== 'match') return;
   if (window.__showcase) {                                          // test hook: draw one gun side-on in front of the camera
     const g = GUNS[window.__showcase], f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)], r = [Math.cos(cam.yaw), -Math.sin(cam.yaw)], mid = (g.muzzle + 0.25) / 2, D = 0.75 + Math.abs(g.muzzle) * 0.55;
-    drawGun(R, g, { pos: (x, y, z) => [cam.x + f[0] * D + r[0] * -(z - mid) - f[0] * x, cam.y + y, cam.z + f[1] * D + r[1] * -(z - mid) - f[1] * x], yaw: cam.yaw - Math.PI / 2, pitch: 0, accent: [0.8, 0.5, 0.2], gold: !!g.gold });
+    drawGun(R, g, { origin: [cam.x + f[0] * D + r[0] * mid, cam.y, cam.z + f[1] * D + r[1] * mid], yaw: cam.yaw - Math.PI / 2, pitch: 0, accent: [0.8, 0.5, 0.2], gold: !!g.gold });
   }
   const spin = t * 1.6;
   // pickups
@@ -892,6 +896,29 @@ function render(t, dt) {
   if (S.wantShot) { S.wantShot = false; try { game.shotURL = canvas.toDataURL('image/png'); game.emit('shot'); } catch { /* ignore */ } }
 }
 
+/** Render each operator once (in the sky above the map) and return PNG data URLs for the menu / lobby pickers. */
+let portraitCache = null;
+export function getPortraits() {
+  if (portraitCache) return portraitCache;
+  if (!R || !game.map) return null;
+  const urls = [], W = 260, H = 360;
+  try {
+    R.resize(W, H);
+    OPERATORS.forEach((op, i) => {
+      const pl = { id: -1, rx: 0, ry: 100, rz: 0, ra: 0.5, rp: 0, al: true, crouch: false, lean: 0, speed: 0, walk: 0.3, wpn: 'm4', op: i, team: 0, carry: -1, gd: false, deadAt: 0, meleeAt: -9 };
+      const cam = { x: -0.45, y: 100.9, z: -3.05, yaw: Math.PI + 0.12, pitch: 0.02, roll: 0, fov: 0.62 };
+      R.begin(cam, { brightness: 1.5, weather: 'clear', fogScale: 1, time: 0, shadowQuality: 1 });
+      R.style({ outline: 0, rim: 0.3 });
+      drawSoldier(R, pl, 0, { op, tc: op.trim, tm: false, gun: GUNS.m4, accent: [0.5, 0.5, 0.5], gold: false, flash: false });
+      R.style();
+      urls.push(canvas.toDataURL('image/png'));
+    });
+  } catch (e) { console.error(e); urls.length = 0; }
+  resizeAll();
+  portraitCache = urls.length ? urls : null;
+  return portraitCache;
+}
+
 // ------------------------------------------------------------------ HUD canvas (reticle, markers, tags, indicators)
 const RETICLE = { red: '#ff3b3b', green: '#46ff7a' };
 function drawHud(t) {
@@ -1019,7 +1046,7 @@ function buildMini() {
   const scale = 5, size = 60 * scale;
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
   g.fillStyle = '#10151c'; g.fillRect(0, 0, size, size);
-  const boxes = [...game.map.boxes].sort((a, b) => a.y1 - b.y1);
+  const boxes = game.map.boxes.filter(b => !b.roof && b.y0 < 7).sort((a, b) => a.y1 - b.y1);
   for (const b of boxes) {
     const h = b.y1; if (h <= 0.01 && b.y0 < 0) { continue; }
     const v = Math.round(clamp(40 + h * 22, 40, 150));
