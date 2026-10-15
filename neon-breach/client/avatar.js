@@ -56,14 +56,31 @@ export function drawSoldier(R, pl, t, o) {
     const knee = ik(hip, ankle, L1, L2, fwd);
     R.span(limb, hip[0], hip[1], hip[2], knee[0], knee[1], knee[2], 0.088, white, 0.05);
     R.span(limb, knee[0], knee[1], knee[2], ankle[0], ankle[1] + 0.02, ankle[2], 0.066, white, 0.05);
-    feet.push({ ankle, knee, lift, side });
+    feet.push({ ankle, knee, lift, side, hip });
   }
   R.texture('plain');
-  for (const { ankle, knee, lift } of feet) {
+  for (const { ankle, knee, lift, side, hip } of feet) {
     const bx = ankle[0] - sy * 0.07, bz = ankle[2] - cy * 0.07, tilt = lift > 0.04 ? 0.35 : 0;
     R.rbox(bx, ankle[1] - 0.03, bz, 0.115, 0.13, 0.31, pl.ra, tilt, BOOT, 0.04, 0, 1, 0.25);
     R.rbox(bx, ankle[1] - 0.085, bz, 0.12, 0.035, 0.32, pl.ra, tilt, SOLE, 0.012);
     R.span(R.meshes.cyl, ankle[0], ankle[1] + 0.02, ankle[2], ankle[0] + (knee[0] - ankle[0]) * 0.2, ankle[1] + 0.2, ankle[2] + (knee[2] - ankle[2]) * 0.2, 0.062, BOOT, 0.2);   // boot shaft
+    { // boot detail: toe cap, heel counter, laces + eyelets, tread blocks, blousing band
+      const af = (d, y) => [ankle[0] + fwd[0] * d, ankle[1] + y, ankle[2] + fwd[2] * d], dk = [0.055, 0.05, 0.045];
+      const tc2 = af(0.2, -0.045); R.rbox(tc2[0], tc2[1], tc2[2], 0.108, 0.07, 0.1, pl.ra, tilt, dk, 0.03, 0, 1, 0.35);
+      const hl = af(-0.065, -0.02); R.rbox(hl[0], hl[1], hl[2], 0.1, 0.1, 0.06, pl.ra, tilt, dk, 0.025, 0, 1, 0.3);
+      for (let k = 0; k < 6; k++) { const q = af(0.0 + k * 0.032, 0.058 - k * 0.006 + tilt * k * 0.01); R.rbox(q[0], q[1], q[2], 0.07, 0.01, 0.012, pl.ra, tilt, [0.55, 0.5, 0.4], 0.004); const e1 = af(k * 0.032, 0.056 - k * 0.006); for (const sd of [-0.036, 0.036]) R.sphere(e1[0] + Math.cos(pl.ra) * sd, e1[1], e1[2] - Math.sin(pl.ra) * sd, 0.008, 0.008, 0.008, [0.6, 0.6, 0.62], 0, 1, 0.9); }
+      for (let k = 0; k < 5; k++) { const q = af(-0.06 + k * 0.07, -0.108); R.rbox(q[0], q[1], q[2], 0.1, 0.018, 0.034, pl.ra, tilt, [0.02, 0.02, 0.02], 0.006); }
+      const bl = af(0.0, 0.2); R.tube(bl[0], bl[1] - 0.03, bl[2], bl[0], bl[1] + 0.04, bl[2], 0.074, 0.082, [0.3, 0.3, 0.22], 0.1);
+      const tg = af(-0.05, 0.14); R.rbox(tg[0], tg[1], tg[2], 0.05, 0.05, 0.02, pl.ra, 0, [0.07, 0.07, 0.07], 0.008);     // pull tab
+    }
+    { // cargo pocket on the outer thigh with flap and button, plus a seam stripe
+      const out = Math.sign(side) * 0.095, c = Math.cos(pl.ra), s2 = -Math.sin(pl.ra), m = [hip[0] + (knee[0] - hip[0]) * 0.5 + c * out * 0.9, hip[1] + (knee[1] - hip[1]) * 0.5, hip[2] + (knee[2] - hip[2]) * 0.5 + s2 * out * 0.9];
+      R.rbox(m[0], m[1], m[2], 0.045, 0.14, 0.12, pl.ra, 0, [0.3, 0.3, 0.23], 0.015, 0, 1, 0.05);
+      R.rbox(m[0] + c * Math.sign(out) * 0.024, m[1] + 0.05, m[2] + s2 * Math.sign(out) * 0.024, 0.016, 0.05, 0.12, pl.ra, 0, [0.26, 0.26, 0.2], 0.008);
+      R.sphere(m[0] + c * Math.sign(out) * 0.034, m[1] + 0.03, m[2] + s2 * Math.sign(out) * 0.034, 0.011, 0.011, 0.011, [0.12, 0.12, 0.12], 0, 1, 0.8);
+      const hk = [(hip[0] * 0.5 + knee[0] * 0.5), (hip[1] * 0.5 + knee[1] * 0.5), (hip[2] * 0.5 + knee[2] * 0.5)];
+      R.rbox(hk[0] - fwd[0] * 0.08, hk[1] - 0.06, hk[2] - fwd[2] * 0.08, 0.02, 0.2, 0.012, pl.ra, 0, [0.22, 0.22, 0.17], 0.004);
+    }
     const kp = [knee[0] + fwd[0] * 0.06, knee[1], knee[2] + fwd[2] * 0.06]; R.rbox(kp[0], kp[1], kp[2], 0.11, 0.14, 0.05, pl.ra, 0, [0.07, 0.07, 0.08], 0.02, 0, 1, 0.3);
   }
   // ---- torso, belt, vest
@@ -84,6 +101,18 @@ export function drawSoldier(R, pl, t, o) {
   rb(-0.15, 0.45, -0.1, 0.035, 0.035, 0.03, [0.08, 0.08, 0.08], 0.012);                      // radio mic
   rb(0, 0.3, 0.17, 0.3, 0.38, 0.12, TAN.map(c => c * 0.75), 0.05, 0, 0.1);                   // assault pack
   rb(0, 0.28, 0.24, 0.22, 0.22, 0.04, TAN.map(c => c * 0.65), 0.03);
+  // plate-carrier detail: pouch flaps + snaps, MOLLE webbing, shoulder straps, cummerbund, pack straps, radio + antenna, hydration tube, patches
+  for (const sx of [-0.105, -0.035, 0.035, 0.105]) { rb(sx, 0.39, -0.17, 0.06, 0.03, 0.025, TAN.map(c => c * 0.7), 0.01); rb(sx, 0.375, -0.188, 0.012, 0.012, 0.01, [0.6, 0.6, 0.6], 0.004, 0, 0.9); for (let k = 0; k < 3; k++) rb(sx - 0.02 + k * 0.02, 0.27 + 0.0, -0.18, 0.004, 0.09, 0.006, [0.1, 0.1, 0.1], 0.002); }
+  for (const sd of [-1, 1]) for (let k = 0; k < 6; k++) rb(sd * 0.2, 0.18 + k * 0.045, -0.02, 0.012, 0.014, 0.12, [0.1, 0.1, 0.09], 0.003);
+  for (let r = 0; r < 3; r++) for (let c2 = 0; c2 < 7; c2++) rb(-0.12 + c2 * 0.04, 0.2 + r * 0.0 + r * 0.0 - 0.07 + r * 0.04, -0.138, 0.032, 0.008, 0.01, [0.09, 0.09, 0.08], 0.002);
+  for (const sd of [-1, 1]) { rb(sd * 0.12, 0.52, -0.01, 0.07, 0.026, 0.22, WEBBING.map(c => c * 0.8), 0.012); rb(sd * 0.12, 0.505, -0.12, 0.05, 0.03, 0.03, [0.1, 0.1, 0.1], 0.01); rb(sd * 0.14, 0.12, -0.15, 0.1, 0.1, 0.05, [0.1, 0.1, 0.11], 0.02); }   // shoulder straps, buckles, utility pouches
+  rb(0, 0.11, -0.145, 0.34, 0.06, 0.03, [0.1, 0.1, 0.09], 0.012);                              // cummerbund band
+  rb(0, 0.46, -0.158, 0.05, 0.018, 0.012, [0.8, 0.8, 0.75], 0.004);                           // name tape
+  rb(0.18, 0.47, -0.04, 0.012, 0.07, 0.1, [0.65, 0.12, 0.12], 0.004);                         // shoulder flag patch
+  rb(0.0, 0.54, 0.0, 0.05, 0.03, 0.02, [0.1, 0.1, 0.1], 0.008); rb(0.0, 0.52, -0.1, 0.12, 0.012, 0.01, [0.1, 0.1, 0.09], 0.003);   // drag handle + collar
+  rb(0.1, 0.46, 0.235, 0.05, 0.12, 0.05, [0.12, 0.13, 0.12], 0.015); { const a0 = TP(0.1, 0.52, 0.235), a1 = TP(0.12, 0.92, 0.235); R.tube(a0[0], a0[1], a0[2], a1[0], a1[1], a1[2], 0.007, 0.004, [0.08, 0.08, 0.08], 0.5); }   // radio + whip antenna
+  for (let k = 0; k < 7; k++) rb(-0.1 + k * 0.033, 0.3, 0.234, 0.026, 0.3, 0.008, TAN.map(c => c * 0.55), 0.003);        // pack compression straps
+  { const h0 = TP(-0.08, 0.5, 0.2), h1 = TP(-0.05, 0.6, 0.0); R.tube(h0[0], h0[1], h0[2], h1[0], h1[1], h1[2], 0.01, 0.01, [0.1, 0.1, 0.1], 0.3); }    // hydration tube
   // team identification: emissive chest strip + shoulder patches
   rb(0, 0.38, -0.16, 0.2, 0.026, 0.012, tc, 0.006, 0.9);
   // ---- neck + head
@@ -118,12 +147,34 @@ export function drawSoldier(R, pl, t, o) {
   else if (op.hat === 'cap') { hat('hair', hairC, 1.02); hat('helmet', hatC, 1.0, 0.012); rbH(0, 0.082, -0.125, 0.17, 0.014, 0.12, hatC.map(c => c * 0.9), 0.006); rbH(0, 0.11, -0.108, 0.06, 0.03, 0.01, tc, 0.004, 0.2, 0.7); }
   else if (op.hat === 'beanie') { hat('helmet', hatC, 1.02, -0.01, 'fabric'); rbH(0, 0.06, 0, 0.2, 0.05, 0.22, hatC.map(c => c * 0.85), 0.02); hat('hair', hairC, 0.98, -0.05); }
   else { hat('hair', hairC, 1.03); rbH(0, 0.0, 0.0, 0.0, 0.0, 0.0, hairC, 0); for (const e of [-1, 1]) rbH(e * 0.1, 0.0, 0.02, 0.03, 0.09, 0.08, hatC, 0.014, 0.5); const a = HP(-0.1, 0.02, 0.02), b = HP(0.1, 0.02, 0.02), c = HP(0, 0.12, 0.02); R.tube(a[0], a[1], a[2], c[0], c[1], c[2], 0.008, 0.008, hatC, 0.5); R.tube(c[0], c[1], c[2], b[0], b[1], b[2], 0.008, 0.008, hatC, 0.5); const m0 = HP(0.1, -0.01, -0.04), m1 = HP(0.04, -0.06, -0.1); R.tube(m0[0], m0[1], m0[2], m1[0], m1[1], m1[2], 0.005, 0.005, hatC); }
+  if (pl.helm) {                                                                              // killstreak metal helmet: steel dome, brim, neck guard
+    const st = [0.55, 0.58, 0.62];
+    rbH(0, 0.075, 0.0, 0.25, 0.15, 0.27, st, 0.06, 0.9); rbH(0, 0.03, -0.01, 0.275, 0.026, 0.295, [0.4, 0.42, 0.46], 0.012, 0.8);
+    rbH(0, 0.14, 0.0, 0.05, 0.02, 0.2, [0.4, 0.42, 0.46], 0.008, 0.8); rbH(0, -0.01, 0.13, 0.2, 0.09, 0.03, st, 0.01, 0.8);
+    for (const e of [-1, 1]) rbH(e * 0.126, 0.04, 0.0, 0.02, 0.07, 0.1, [0.4, 0.42, 0.46], 0.008, 0.8);
+  }
+  { // face + headgear detail: brows, chin, cheekbones, ear detail, headset boom mic, chin strap, mount
+    const hair2 = (op.hair || [0.1, 0.07, 0.05]).map(c => c * 0.9);
+    if (!mask) {
+      for (const e of [-1, 1]) { face(e * 0.037, 0.034, -0.094, 0.022, 0.006, 0.012, hair2); face(e * 0.037, 0.011, -0.092, 0.02, 0.004, 0.01, skin.map(c => c * 0.84)); face(e * 0.07, -0.04, -0.062, 0.022, 0.022, 0.02, skin.map(c => c * 1.02)); face(e * 0.012, -0.036, -0.094, 0.007, 0.007, 0.007, skin.map(c => c * 0.55)); face(e * 0.092, -0.002, 0.0, 0.007, 0.018, 0.012, skin.map(c => c * 0.8)); }
+      face(0, -0.098, -0.07, 0.034, 0.022, 0.03, skin.map(c => c * 0.97)); face(0, -0.052, -0.09, 0.022, 0.005, 0.01, skin.map(c => c * 0.6));
+    }
+    for (const e of [-1, 1]) rbH(e * 0.1, -0.005, 0.0, 0.022, 0.06, 0.055, [0.06, 0.06, 0.07], 0.01, 0.3);
+    { const m0 = HP(0.1, -0.03, 0.0), m1 = HP(0.07, -0.07, -0.07), m2 = HP(0.035, -0.07, -0.1); R.tube(m0[0], m0[1], m0[2], m1[0], m1[1], m1[2], 0.004, 0.004, [0.06, 0.06, 0.06], 0.3); R.tube(m1[0], m1[1], m1[2], m2[0], m2[1], m2[2], 0.004, 0.004, [0.06, 0.06, 0.06], 0.3); R.sphere(m2[0], m2[1], m2[2], 0.011, 0.01, 0.01, [0.08, 0.08, 0.08], 0, 1, 0.5); }
+    if (op.hat === 'helmet' || op.hat === 'hardhat') {
+      for (const e of [-1, 1]) { const s0 = HP(e * 0.1, 0.02, -0.02), s1 = HP(e * 0.07, -0.1, -0.05), s2 = HP(0, -0.115, -0.07); R.tube(s0[0], s0[1], s0[2], s1[0], s1[1], s1[2], 0.004, 0.004, [0.1, 0.1, 0.1]); R.tube(s1[0], s1[1], s1[2], s2[0], s2[1], s2[2], 0.004, 0.004, [0.1, 0.1, 0.1]); }
+      rbH(0, 0.105, -0.12, 0.05, 0.03, 0.03, [0.08, 0.08, 0.09], 0.008, 0.5); rbH(0, 0.1, -0.135, 0.03, 0.02, 0.014, [0.15, 0.2, 0.22], 0.004, 0.2);
+      for (let k = -2; k <= 2; k++) rbH(k * 0.022, 0.13, -0.02, 0.012, 0.006, 0.17, [0.09, 0.09, 0.08], 0.003);     // elastic band
+    }
+  }
   // ---- arms + weapon
   const shY = 0.5, cpp = Math.cos(pl.rp), spp = Math.sin(pl.rp);
   const shR = TP(0.215, shY, 0), shL = TP(-0.215, shY, 0);
   const A = (lx, ly, lz) => { const dy = ly - (hipY + 0.5), dz = lz; return wp(lean + lx, hipY + 0.5 + dy * cpp - dz * spp, dy * spp + dz * cpp); };
   const ox = 0.2, oy = hipY + 0.42 - 0.0, oz = -0.34;
-  drawGun(R, gun, { origin: A(ox, oy, oz), yaw: pl.ra, pitch: pl.rp, accent: o.accent, gold: o.gold, far: !!o.far });
+  const g0 = R.state.tris;
+  drawGun(R, gun, { origin: A(ox, oy, oz), yaw: pl.ra, pitch: pl.rp, accent: o.accent, gold: o.gold, far: !!o.far, mid: !o.hi });
+  R.state.gunTris = R.state.tris - g0;
   const handR = A(ox, oy - 0.07, oz + gun.grip + 0.02), handL = A(ox - 0.02, oy - 0.035, oz + gun.fore);
   const l1 = 0.3, l2 = 0.29;
   const elR = ik(shR, handR, l1, l2, [0.5 * cy, -1, -0.5 * sy]), elL = ik(shL, handL, l1, l2, [-0.5 * cy, -1, 0.5 * sy]);
@@ -139,6 +190,18 @@ export function drawSoldier(R, pl, t, o) {
   const mid = [(shL[0] * 0.55 + elL[0] * 0.45), (shL[1] * 0.55 + elL[1] * 0.45), (shL[2] * 0.55 + elL[2] * 0.45)];
   R.tube(mid[0], mid[1] - 0.04, mid[2], mid[0], mid[1] + 0.04, mid[2], 0.066, 0.066, tc, 0.2, 0.85);
   void ab;
+  { // arms: elbow pads, rolled cuffs, wristwatch, fingers / thumbs / knuckles wrapped on the gun
+    const fv = [-sy * cpp, spp, -cy * cpp], sv = [cy, 0, -sy];
+    for (const [el, sh] of [[elR, shR], [elL, shL]]) { R.rbox(el[0], el[1] - 0.005, el[2], 0.085, 0.07, 0.07, pl.ra, 0, [0.09, 0.09, 0.1], 0.025, 0, 1, 0.3); const c0 = [el[0] + (sh[0] - el[0]) * 0.28, el[1] + (sh[1] - el[1]) * 0.28, el[2] + (sh[2] - el[2]) * 0.28]; R.tube(c0[0], c0[1], c0[2], el[0] + (sh[0] - el[0]) * 0.18, el[1] + (sh[1] - el[1]) * 0.18, el[2] + (sh[2] - el[2]) * 0.18, 0.062, 0.058, [0.32, 0.32, 0.24]); }
+    for (const [hd, el, left] of [[handR, elR, false], [handL, elL, true]]) {
+      const gl = [0.09, 0.09, 0.1], gl2 = [0.06, 0.06, 0.07];
+      R.tube(hd[0] + (el[0] - hd[0]) * 0.18, hd[1] + (el[1] - hd[1]) * 0.18, hd[2] + (el[2] - hd[2]) * 0.18, hd[0] + (el[0] - hd[0]) * 0.34, hd[1] + (el[1] - hd[1]) * 0.34, hd[2] + (el[2] - hd[2]) * 0.34, 0.05, 0.05, gl2, 0.2);   // glove cuff
+      for (let k = 0; k < 4; k++) { const f1 = [hd[0] + fv[0] * 0.06 + sv[0] * (-0.024 + k * 0.016), hd[1] + fv[1] * 0.06 - 0.012 - (k % 2) * 0.004, hd[2] + fv[2] * 0.06 + sv[2] * (-0.024 + k * 0.016)]; R.rbox(f1[0], f1[1], f1[2], 0.016, 0.018, 0.046, pl.ra, pl.rp + 0.5, gl, 0.007, 0, 1, 0.2); const f2 = [f1[0] + fv[0] * 0.03, f1[1] + fv[1] * 0.03 - 0.014, f1[2] + fv[2] * 0.03]; R.rbox(f2[0], f2[1], f2[2], 0.014, 0.014, 0.026, pl.ra, pl.rp + 1.0, gl, 0.006, 0, 1, 0.2); R.sphere(hd[0] + fv[0] * 0.025 + sv[0] * (-0.024 + k * 0.016), hd[1] + 0.034, hd[2] + fv[2] * 0.025 + sv[2] * (-0.024 + k * 0.016), 0.009, 0.007, 0.009, [0.14, 0.14, 0.15], 0, 1, 0.4); }
+      const th = [hd[0] + sv[0] * (left ? -1 : 1) * 0.04 + fv[0] * 0.02, hd[1] + 0.012, hd[2] + sv[2] * (left ? -1 : 1) * 0.04 + fv[2] * 0.02]; R.rbox(th[0], th[1], th[2], 0.016, 0.018, 0.06, pl.ra, pl.rp, gl, 0.007, 0, 1, 0.2);
+      if (left) { const w = [hd[0] + (el[0] - hd[0]) * 0.3, hd[1] + (el[1] - hd[1]) * 0.3 + 0.03, hd[2] + (el[2] - hd[2]) * 0.3]; R.rbox(w[0], w[1], w[2], 0.036, 0.016, 0.036, pl.ra, 0, [0.05, 0.05, 0.05], 0.006, 0, 1, 0.5); R.sphere(w[0], w[1] + 0.01, w[2], 0.011, 0.004, 0.011, [0.3, 1, 0.5], 0.9); }
+      else R.rbox(hd[0], hd[1] + 0.038, hd[2], 0.06, 0.012, 0.08, pl.ra, pl.rp, [0.05, 0.05, 0.06], 0.005, 0, 1, 0.4);   // knuckle guard
+    }
+  }
   if (o.flash) { const f = A(ox, oy + 0.03, oz + gun.muzzle - 0.05); R.sphere(f[0], f[1], f[2], 0.07, 0.07, 0.16, [1, 0.85, 0.4], 1, 1); }
   if (t - (pl.meleeAt || -9) < 0.3) { const k = (t - pl.meleeAt) / 0.3, a0 = A(0.45 - k * 0.6, oy, -0.4 - Math.sin(k * Math.PI) * 0.2), a1 = A(0.45 - k * 0.6, oy, -0.72 - Math.sin(k * Math.PI) * 0.2); R.tube(a0[0], a0[1], a0[2], a1[0], a1[1], a1[2], 0.022, 0.006, [0.88, 0.92, 0.96], 1.1, 0.3); }
 }

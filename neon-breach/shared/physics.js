@@ -40,6 +40,7 @@ function approach(v, target, amt) {
 }
 
 function stepOnce(boxes, s, inp, dt) {
+  s.wallHit = false;
   // crouch / uncrouch (only if there is headroom)
   if (inp.crouch) s.crouch = true;
   else if (s.crouch && !hitBox(boxes, s.x, s.y, s.z, P.r, P.h)) s.crouch = false;
@@ -84,9 +85,12 @@ function stepOnce(boxes, s, inp, dt) {
       const v = s[vk];
       const pushLow = v > 0 ? true : v < 0 ? false : (s[axis] < (lo + hi) / 2);
       s[axis] = pushLow ? lo - P.r - 2 * E : hi + P.r + 2 * E;
-      s[vk] = 0;
+      s[vk] = 0; s.wallHit = true;
     }
   }
+  // wall boots (killstreak): push forward into a wall to climb it, and keep the legs running up it
+  if (inp.wall && s.wallHit && inp.f > 0.1) { s.vy = Math.max(s.vy, 5.4); s.grounded = false; s.climb = true; s.cg = 0.4; }
+  else { s.climb = false; if (inp.wall && s.cg > 0 && inp.f > 0.1) { s.cg -= dt; s.vy = Math.max(s.vy, 2.2); } else s.cg = 0; }   // brief lift to clear the ledge
 }
 
 /** Advance a body by dt (sub-stepped to avoid tunnelling). inp = {f,r,yaw,jump,crouch,ads}. */

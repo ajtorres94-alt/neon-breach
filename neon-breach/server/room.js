@@ -7,11 +7,13 @@ import {
   WEAPONS, PRIMARY, SIDEARMS, GADGETS, PICKUP_VARIANTS, MODES, PICKUP_RESPAWN, DEFAULT_SETTINGS, MAX_PLAYERS, TICK_RATE, RESPAWN_TIME, PROTECT_TIME,
 } from '../shared/weapons.js';
 import { makeBot, botThink, BOT_NAMES } from './bots.js';
+import { Streaks, UNIT_WIDS } from './streaks.js';
 
 const DT = 1 / TICK_RATE;
 const nowS = () => Date.now() / 1000;
 const r2 = (v) => Math.round(v * 100) / 100;
 const MODE_IDS = Object.keys(MODES);
+const SENTRY_W = { dmg: 9, hs: 1, rate: 9, spread: 0.03, adsSpread: 0.03, pellets: 1, range: 40, kind: 'hit' };
 
 export class Room {
   constructor(code, opts = {}) {
@@ -35,6 +37,7 @@ export class Room {
     this.idleSince = nowS();
     this.rotation = 0;
     this.vote = null; this.callAt = new Map();
+    this.streaks = new Streaks(this);
     this.interval = setInterval(() => { try { this.update(); } catch (e) { console.error('room update error', this.code, e); } }, 1000 / TICK_RATE);
     if (this.isPublic) { this.fillBots(); this.startMatch(); }
   }
@@ -166,6 +169,7 @@ export class Room {
     const list = [...this.players.values()];
     if (this.teamMode) { let c = [0, 0]; list.forEach(p => c[p.team]++); while (Math.abs(c[0] - c[1]) > 1) { const big = c[0] > c[1] ? 0 : 1; const mv = list.filter(p => p.team === big).pop(); mv.team = 1 - big; c[big]--; c[1 - big]++; } }
     this.teamScore = [0, 0]; this.mines = []; this.tokens = []; this.projs = []; this.lasers = []; this.winner = null;
+    this.streaks.reset();
     this.hillOwner = -2; this.hillAcc = 0;
     // pickups
     let kinds = this.map.pickups.map(p => p.kind);
@@ -184,6 +188,7 @@ export class Room {
     for (const p of this.players.values()) {
       p.kills = p.deaths = p.assists = p.caps = p.returns = p.score = 0;
       p.carrying = -1; p.alive = false; p.owned = new Set(['pistol']); p.minesOut = 0; p.laserOut = 0;
+      p.streak = 0; p.offers = []; p.helmet = false; p.wall = false;
     }
     this.phase = 'countdown'; this.countdownEnd = nowS() + 3; this.timeLeft = s.time;
     this.broadcast(this.matchMsg());
@@ -256,6 +261,7 @@ export class Room {
       case 'laser': return this.onLaser(p, msg);
       case 'throw': return this.onThrow(p, msg);
       case 'melee': return this.onMelee(p);
+      case 'ks': return this.streaks.pick(p, msg.k);
       case 'cfg': return this.handleCfg(p, msg);
       case 'team': return this.handleTeam(p, msg.team | 0);
       case 'op': p.op = msg.op | 0; return this.pushRoom();
@@ -294,7 +300,7 @@ export class Room {
   /** Authoritative hitscan. Shared by humans and bots. */
   fire(p, wid, origin, dir, ads) {
     if (!p.alive || this.phase !== 'play') return;
-    const w = WEAPONS[wid];
+    const w = WEAPONS[wid] || (wid === 'sentry' ? SENTRY_W : null);
     if (!w || !p.owned.has(wid)) return;
     const t = nowS();
     if (t - (p.lastFire[wid] || 0) < (1 / w.rate) * 0.8) return;
@@ -317,19 +323,25 @@ export class Room {
         d = norm3([dir[0] + (rx[0] * Math.cos(a) + ry[0] * Math.sin(a)) * r, dir[1] + (rx[1] * Math.cos(a) + ry[1] * Math.sin(a)) * r, dir[2] + (rx[2] * Math.cos(a) + ry[2] * Math.sin(a)) * r]);
       }
       const wh = raycast(this.map.boxes, origin, d, w.range);
-      let maxT = wh ? wh.t : w.range, victim = null, vhead = false;
+      let maxT = wh ? wh.t : w.range, victim = null, vhead = false, uhit = null;
+      const uh = this.streaks.hitUnits(origin, d, maxT, p);
+      if (uh) { maxT = uh.t; uhit = uh.unit; }
       for (const o of this.players.values()) {
-        if (o === p || !o.alive) continue;
+        if (o === p || !o.alive || o.id === p.ownerId) continue;
         if (this.teamMode && o.team === p.team) continue;
         const h = o.crouch ? P.hc : P.h, R = 0.45; // slightly generous hitbox to forgive network latency
         const tt = rayAABB(origin[0], origin[1], origin[2], d[0], d[1], d[2], o.x - R, o.y, o.z - R, o.x + R, o.y + h, o.z + R);
-        if (tt >= 0 && tt < maxT) { maxT = tt; victim = o; vhead = (origin[1] + d[1] * tt) > o.y + h - 0.36; }
+        if (tt >= 0 && tt < maxT) { maxT = tt; victim = o; uhit = null; vhead = (origin[1] + d[1] * tt) > o.y + h - 0.36; }
       }
       ends.push([r2(origin[0] + d[0] * maxT), r2(origin[1] + d[1] * maxT), r2(origin[2] + d[2] * maxT)]);
+      if (victim && vhead && victim.helmet) { vhead = false; victim.helmet = false; this.emit({ e: 'helmet', id: victim.id, x: r2(victim.x), y: r2(victim.y + 1.7), z: r2(victim.z) }); }
       if (victim) {
         let dmg = w.dmg * (vhead ? w.hs : 1);
         if (!w.nofall) dmg *= 1 - 0.5 * Math.pow(maxT / w.range, 2);
         this.damage(victim, dmg, p, wid, vhead, !!w.pierce);
+      } else if (uhit) {
+        let dmg = w.dmg; if (!w.nofall) dmg *= 1 - 0.5 * Math.pow(maxT / w.range, 2);
+        this.streaks.damage(uhit, dmg, p, wid);
       }
     }
     this.emit({ e: 'shot', id: p.id, w: wid, o: [r2(origin[0]), r2(origin[1]), r2(origin[2])], ends });
@@ -337,6 +349,7 @@ export class Room {
 
   damage(v, amt, att, wid, head, pierce = false) {
     if (!v.alive) return;
+    if (att && att.unit) { wid = att.unit.type; att = this.players.get(att.unit.owner) || null; if (!att) att = { id: 0, team: -1, unitOnly: true, kills: 0, score: 0, assists: 0 }; }
     const t = nowS();
     if (wid !== 'fall') {
       if (this.phase !== 'play') return;
@@ -357,13 +370,17 @@ export class Room {
   kill(v, att, wid, head) {
     v.alive = false; v.hp = 0; v.deaths++; v.respawnAt = nowS() + RESPAWN_TIME; v.ads = false;
     const t = nowS();
+    const ghost = att && att.unitOnly;                                // killed by the unit of a player who has since left
+    if (ghost) att = null;
     const selfKill = !att || att === v;
+    this.streaks.onDeath(v);
     if (!selfKill) {
       att.kills++;
+      if (!UNIT_WIDS.has(wid)) this.streaks.onKill(att);
       for (const [id, at] of v.dmgBy) { if (id !== att.id && t - at < 8) { const a = this.players.get(id); if (a && (!this.teamMode || a.team === att.team)) a.assists++; } }
     }
     const mode = this.settings.mode;
-    if (mode === 'dm' && !selfKill) att.score++;
+    if (ghost) { /* no points */ } else if (mode === 'dm' && !selfKill) att.score++;
     else if (mode === 'dm' && selfKill) v.score = Math.max(0, v.score - 1);
     else if (mode === 'tdm' && !selfKill) this.teamScore[att.team]++;
     else if (mode === 'gg') {
@@ -416,6 +433,7 @@ export class Room {
     const owner = this.players.get(mine.owner);
     if (owner) owner.minesOut = Math.max(0, owner.minesOut - 1);
     this.emit({ e: 'boom', x: r2(mine.x), y: r2(mine.y), z: r2(mine.z) });
+    this.streaks.blast([mine.x, mine.y, mine.z], 4.5, 110, 25, owner || { id: mine.owner, team: mine.team }, 'mine');
     for (const o of [...this.players.values()]) {
       if (!o.alive) continue;
       if (owner && o === owner) continue;
@@ -488,14 +506,17 @@ export class Room {
         const tt = rayAABB(o[0], o[1], o[2], d[0], d[1], d[2], q.x - R, q.y, q.z - R, q.x + R, q.y + h, q.z + R);
         if (tt >= 0 && tt < maxT) { maxT = tt; victim = q; }
       }
-      if (!wh && !victim) { pr.x += d[0] * len; pr.y += d[1] * len; pr.z += d[2] * len; continue; }
+      let uvic = null;
+      { const uh = this.streaks.hitUnits(o, d, maxT, { id: pr.owner, team: pr.team }); if (uh && uh.t <= maxT) { maxT = uh.t; uvic = uh.unit; victim = null; } }
+      if (!wh && !victim && !uvic) { pr.x += d[0] * len; pr.y += d[1] * len; pr.z += d[2] * len; continue; }
       this.projs.splice(i, 1);
       const owner = this.players.get(pr.owner) || null;
       const hx = o[0] + d[0] * maxT, hy = o[1] + d[1] * maxT, hz = o[2] + d[2] * maxT;
       if (pr.type === 'rocket') {
         const W = WEAPONS.launcher;
         this.explodeAt([hx - d[0] * 0.3, hy - d[1] * 0.3, hz - d[2] * 0.3], owner, 'launcher', W.radius, W.dmg, W.minDmg, 0.6, victim);
-      } else if (victim && owner) this.damage(victim, GADGETS.knife.dmg, owner, 'knife', false, true);
+      } else if (uvic) this.streaks.damage(uvic, GADGETS.knife.dmg, owner || { id: pr.owner, team: pr.team }, 'knife');
+      else if (victim && owner) this.damage(victim, GADGETS.knife.dmg, owner, 'knife', false, true);
       else this.emit({ e: 'tink', x: r2(hx), y: r2(hy), z: r2(hz) });
     }
   }
@@ -503,6 +524,7 @@ export class Room {
   /** Radial blast with line-of-sight check. selfScale: 0 = owner immune, otherwise fraction of damage the owner takes. */
   explodeAt(pos, owner, wid, radius, maxDmg, minDmg, selfScale, direct) {
     this.emit({ e: 'boom', x: r2(pos[0]), y: r2(pos[1]), z: r2(pos[2]), r: radius });
+    this.streaks.blast(pos, radius, maxDmg, minDmg, owner, wid);
     for (const o of [...this.players.values()]) {
       if (!o.alive) continue;
       if (owner && o === owner && selfScale === 0) continue;
@@ -544,6 +566,7 @@ export class Room {
       if (raycast(this.map.boxes, eye, norm3([o.x - eye[0], ty - eye[1], o.z - eye[2]]), Math.max(0.1, dist - 0.2))) continue;
       if (d < bd) { bd = d; best = o; }
     }
+    if (!best && this.streaks.melee(p, G.range, G.front)) { this.emit({ e: 'melee', id: p.id, hit: true }); return; }
     this.emit({ e: 'melee', id: p.id, hit: !!best });
     if (!best) return;
     const vfx = -Math.sin(best.yaw), vfz = -Math.cos(best.yaw), ax = best.x - p.x, az = best.z - p.z, al = Math.hypot(ax, az) || 1;
@@ -611,6 +634,7 @@ export class Room {
       this.tickMines(t);
       this.tickProjectiles(DT, t);
       this.tickLasers(t);
+      this.streaks.tick(DT, t);
       this.tickMode(t);
       if (this.timeLeft <= 0) this.timeUp();
     }
@@ -742,7 +766,7 @@ export class Room {
         i: p.id, x: r2(p.x), y: r2(p.y), z: r2(p.z), a: r2(p.yaw), p: r2(p.pitch), c: p.crouch ? 1 : 0, l: r2(p.lean),
         h: Math.round(p.hp), r: Math.round(p.armor), w: p.wpn, al: p.alive ? 1 : 0, ad: p.ads ? 1 : 0, pr: t < p.protectUntil ? 1 : 0,
         k: p.kills, d: p.deaths, as: p.assists, cp: p.caps, rt: p.returns, sc: p.score, tm: p.team,
-        cr: p.carrying, gd: p.owned.has('golden') ? 1 : 0, mi: p.mines, lm: p.lasers, kn: p.knives,
+        cr: p.carrying, gd: p.owned.has('golden') ? 1 : 0, mi: p.mines, lm: p.lasers, kn: p.knives, st: p.streak || 0, hm: p.helmet ? 1 : 0, ww: p.wall ? 1 : 0,
       });
     }
     const snap = {
@@ -751,6 +775,7 @@ export class Room {
       pk: this.pickups.map(s => s.active ? 1 : 0).join(''),
       m: this.mines.map(m => [m.id, r2(m.x), r2(m.y), r2(m.z), r2(m.nx), r2(m.ny), r2(m.nz), m.team, m.owner, t >= m.armAt ? 1 : 0]),
       pj: this.projs.map(q => [q.id, q.type === 'rocket' ? 0 : 1, r2(q.x), r2(q.y), r2(q.z), r2(q.vx), r2(q.vy), r2(q.vz)]),
+      u: this.streaks.snapshot(),
       lz: this.lasers.map(L => [L.id, r2(L.x), r2(L.y), r2(L.z), r2(L.nx), r2(L.ny), r2(L.nz), r2(L.len), L.team, L.owner, t >= L.armAt ? 1 : 0]),
     };
     if (this.flags) snap.f = this.flags.map(f => [f.st, f.carrier, r2(f.x), r2(f.y), r2(f.z)]);

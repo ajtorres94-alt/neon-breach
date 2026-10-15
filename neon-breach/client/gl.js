@@ -74,6 +74,8 @@ uniform vec3 uTint; uniform float uUseTint; uniform float uEmit; uniform float u
 uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uGnd;
 uniform vec3 uFog; uniform vec2 uFogRange; uniform vec3 uCam; uniform float uFogOn;
 uniform float uBright; uniform float uLight; uniform float uFlash;
+#define NL 8
+uniform vec4 uLP[NL]; uniform vec3 uLC[NL]; uniform vec4 uLD[NL];   // dynamic lights: pos+radius, colour*intensity, spot dir+cone (cone<-1 = point)
 uniform float uShadowOn; uniform float uShadowTexel; uniform float uShadowQ; uniform float uRim; uniform float uOutlineOn;
 float unpackD(vec4 c){ return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
 float shadowAt(float ndl){
@@ -107,6 +109,21 @@ void main(){
   vec3 lit = (shade * 0.92 + sunl * (0.55 + 0.45 * sh) * 0.8) * uLight;
   vec3 col = base * lit * uBright;
   vec3 V = normalize(uCam - vWorld);
+  vec3 dyn = vec3(0.0);
+  for (int i = 0; i < NL; i++) {
+    vec3 lc = uLC[i]; if (lc.x + lc.y + lc.z <= 0.0) continue;
+    vec3 d = uLP[i].xyz - vWorld; float dist = length(d); float rad = uLP[i].w; if (dist >= rad) continue;
+    vec3 ld = d / max(dist, 0.001);
+    float att = 1.0 - dist / rad; att *= att;
+    float cone = 1.0;
+    if (uLD[i].w > -1.0) cone = smoothstep(uLD[i].w, uLD[i].w + 0.18, dot(-ld, uLD[i].xyz));
+    float df = max(dot(n, ld), 0.0) * 0.8 + 0.2;
+    vec3 c = lc * att * cone * df;
+    if (uSpec > 0.0) c += lc * att * cone * pow(max(dot(n, normalize(ld + V)), 0.0), 28.0) * uSpec * 0.9;
+    dyn += c;
+  }
+  dyn = min(dyn, vec3(0.75));
+  col += base * dyn * 1.0 * uBright + dyn * 0.025 * uBright;
   if (uSpec > 0.0) {
     vec3 H = normalize(L + V);
     col += uSunCol * pow(max(dot(n, H), 0.0), 36.0) * uSpec * (0.25 + 0.75 * sh) * uBright;
@@ -232,14 +249,15 @@ export function createRenderer(canvas, opts = {}) {
 
   // ---- shared meshes
   const mkMesh = (data) => { const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return { buf, count: data.length / G.STRIDE }; };
-  const meshes = { cube: mkMesh(G.genCube()), sphere: mkMesh(G.genSphere(20, 12)), cyl: mkMesh(G.genCylinder(20)), cone: mkMesh(G.genCone(18)), disc: mkMesh(G.genDisc(24)) };
+  const meshes = { cube: mkMesh(G.genCube()), sphere: mkMesh(G.genSphere(20, 12)), cyl: mkMesh(G.genCylinder(20)), cone: mkMesh(G.genCone(18)), disc: mkMesh(G.genDisc(24)), sphereLo: mkMesh(G.genSphere(8, 5)), sphereMid: mkMesh(G.genSphere(12, 8)) };
   const cacheMesh = new Map();
   function cached(key, make) {
     let m = cacheMesh.get(key);
     if (!m) { if (cacheMesh.size > 500) { for (const [k, v] of cacheMesh) { gl.deleteBuffer(v.buf); cacheMesh.delete(k); break; } } m = mkMesh(make()); cacheMesh.set(key, m); }
     return m;
   }
-  const rboxMesh = (hx, hy, hz, r) => cached(`rb${hx.toFixed(3)},${hy.toFixed(3)},${hz.toFixed(3)},${r.toFixed(3)}`, () => G.genRBox(hx, hy, hz, r));
+  const scaledCube = (hx, hy, hz) => cached(`sc${hx.toFixed(3)},${hy.toFixed(3)},${hz.toFixed(3)}`, () => { const m = Float32Array.from(G.genCube()); for (let i = 0; i < m.length; i += G.STRIDE) { m[i] *= 2 * hx; m[i + 1] *= 2 * hy; m[i + 2] *= 2 * hz; } return m; });
+  const rboxMesh = (hx, hy, hz, r) => (r < 0.012 || Math.max(hx, hy, hz) < 0.035) ? scaledCube(hx, hy, hz) : cached(`rb${hx.toFixed(3)},${hy.toFixed(3)},${hz.toFixed(3)},${r.toFixed(3)}`, () => G.genRBox(hx, hy, hz, r, Infinity, Math.min(hx, hy, hz) < 0.05));
   const capsuleMesh = (r, len) => cached(`cp${r.toFixed(3)},${len.toFixed(3)}`, () => G.genCapsule(r, len));
   const loftMesh = (key, make) => cached('lf' + key, make);
   const frustumMesh = (rt, rb) => cached(`fr${rt.toFixed(3)},${rb.toFixed(3)}`, () => G.genFrustum(rt, rb, 16, true));
@@ -248,7 +266,7 @@ export function createRenderer(canvas, opts = {}) {
   const lineBuf = gl.createBuffer();
   const aP = gl.getAttribLocation(sky.p, 'aP');
 
-  const state = { groups: [], theme: null, vp: M4.ident(), cam: [0, 0, 0], bright: 1, fogOn: 1, lightVP: M4.ident(), time: 0, shadowQ: 1, fogScale: 1, curTex: '' };
+  const state = { tris: 0, groups: [], theme: null, vp: M4.ident(), cam: [0, 0, 0], bright: 1, fogOn: 1, lightVP: M4.ident(), time: 0, shadowQ: 1, fogScale: 1, curTex: '' };
   const model = M4.ident(), rot = new Float32Array(9), tmpR = new Float32Array(9);
   const IDENT = M4.ident(), IDENT3 = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
@@ -312,6 +330,19 @@ export function createRenderer(canvas, opts = {}) {
     gl.cullFace(gl.BACK); gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
   }
 
+  const NLIGHT = 8, LP = new Float32Array(NLIGHT * 4), LC = new Float32Array(NLIGHT * 3), LD = new Float32Array(NLIGHT * 4);
+  function uploadLights(off) {
+    gl.uniform4fv(U['uLP[0]'], LP); gl.uniform3fv(U['uLC[0]'], off ? new Float32Array(NLIGHT * 3) : LC); gl.uniform4fv(U['uLD[0]'], LD);
+  }
+  /** Set up to 8 dynamic lights: { x,y,z, r (radius), c:[r,g,b] (already scaled by intensity), dir:[x,y,z]|null, cone (cos half-angle) }. */
+  function setLights(list) {
+    LP.fill(0); LC.fill(0); LD.fill(0); for (let i = 0; i < NLIGHT; i++) LD[i * 4 + 3] = -2;
+    for (let i = 0; i < Math.min(NLIGHT, list.length); i++) {
+      const l = list[i]; LP.set([l.x, l.y, l.z, l.r], i * 4); LC.set(l.c, i * 3);
+      if (l.dir) LD.set([l.dir[0], l.dir[1], l.dir[2], l.cone ?? 0.8], i * 4);
+    }
+    gl.useProgram(main.p); uploadLights(false);
+  }
   function setCommon(dim) {
     const t = state.theme, light = t.light * dim;
     gl.uniform3fv(U.uSun, t.sun);
@@ -390,7 +421,7 @@ export function createRenderer(canvas, opts = {}) {
     setModel(x, y, z, R || IDENT3, sx, sy, sz);
     gl.uniform1f(U.uUseTint, 1); gl.uniform3fv(U.uTint, col);
     gl.uniform1f(U.uEmit, emit); gl.uniform1f(U.uAlpha, alpha); gl.uniform1f(U.uFlash, flash); gl.uniform1f(U.uSpec, spec);
-    gl.drawArrays(gl.TRIANGLES, 0, m.count);
+    gl.drawArrays(gl.TRIANGLES, 0, m.count); state.tris += m.count / 3;
     if (state.outlineW > 0 && alpha > 0.99 && emit < 0.6 && !state.inVM) {          // inverted-hull outline
       gl.cullFace(gl.FRONT); gl.uniform1f(U.uOutlineOn, 1); gl.uniform1f(U.uOutline, state.outlineW);
       gl.drawArrays(gl.TRIANGLES, 0, m.count);
@@ -398,11 +429,11 @@ export function createRenderer(canvas, opts = {}) {
     }
   }
   /** Draw a pre-baked mesh whose colours live in its vertices (no tint). */
-  function drawBaked(m, x, y, z, Rm, spec = 0, emit = 0) {
+  function drawBaked(m, x, y, z, Rm, spec = 0, emit = 0, sc = 1) {
     if (boundMesh !== m) { bindMesh(m); boundMesh = m; }
-    setModel(x, y, z, Rm || IDENT3, 1, 1, 1);
+    setModel(x, y, z, Rm || IDENT3, sc, sc, sc);
     gl.uniform1f(U.uUseTint, 0); gl.uniform1f(U.uEmit, emit); gl.uniform1f(U.uAlpha, 1); gl.uniform1f(U.uFlash, 0); gl.uniform1f(U.uSpec, spec);
-    gl.drawArrays(gl.TRIANGLES, 0, m.count);
+    gl.drawArrays(gl.TRIANGLES, 0, m.count); state.tris += m.count / 3;
     gl.uniform1f(U.uUseTint, 1);
   }
   /** Set the dynamic-object look: outline width (metres, 0 = off) and rim-light strength. */
@@ -439,7 +470,7 @@ export function createRenderer(canvas, opts = {}) {
     if (len < 1e-4) return;
     drawMesh(m, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, G.alignY(tmpR, dx, dy, dz), sr, len, sr, col, emit, 1, spec);
   }
-  function sphere(x, y, z, rx, ry, rz, col, emit = 0, alpha = 1, spec = 0, yaw = 0, pitch = 0) { drawMesh(meshes.sphere, x, y, z, rotate(yaw, pitch), rx, ry, rz, col, emit, alpha, spec); }
+  function sphere(x, y, z, rx, ry, rz, col, emit = 0, alpha = 1, spec = 0, yaw = 0, pitch = 0) { const mr = Math.max(rx, ry, rz); drawMesh(mr < 0.03 ? meshes.sphereLo : mr < 0.09 ? meshes.sphereMid : meshes.sphere, x, y, z, rotate(yaw, pitch), rx, ry, rz, col, emit, alpha, spec); }
   function blob(x, y, z, r, alpha) { drawMesh(meshes.disc, x, y + 0.02, z, IDENT3, r, 1, r, [0, 0, 0], 0, alpha); }
   function texture(name, uvMul = 1) { setTex(name || 'plain'); gl.uniform1f(U.uUVMul, uvMul); }
 
@@ -464,7 +495,7 @@ export function createRenderer(canvas, opts = {}) {
 
   /** Draw in camera space after clearing depth (first-person weapon). */
   function beginViewmodel(fov) {
-    state.inVM = true; gl.uniform1f(U.uRim, 0.35);
+    state.inVM = true; gl.uniform1f(U.uRim, 0.35); uploadLights(true);
     gl.clear(gl.DEPTH_BUFFER_BIT);
     const proj = M4.perspective(M4.ident(), fov, canvas.width / canvas.height, 0.02, 20);
     gl.uniformMatrix4fv(U.uVP, false, proj);
@@ -474,7 +505,7 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform1f(U.uLight, Math.max(1.0, state.theme.light) * (state.dim < 1 ? 0.85 : 1));
   }
   function endViewmodel() {
-    state.inVM = false; gl.uniform1f(U.uRim, 0.12);
+    state.inVM = false; gl.uniform1f(U.uRim, 0.12); uploadLights(false);
     gl.uniformMatrix4fv(U.uVP, false, state.vp); gl.uniform1f(U.uFogOn, 1); gl.uniform1f(U.uShadowOn, shadowOk ? 1 : 0);
     gl.uniform3fv(U.uCam, state.cam); gl.uniform3fv(U.uSun, state.theme.sun); gl.uniform1f(U.uSpec, 0); setCommonLight();
   }
@@ -490,7 +521,7 @@ export function createRenderer(canvas, opts = {}) {
   }
 
   return { gl, setMap, resize, begin, box, rbox, boxRot, limb, tube, sphere, blob, texture, rotate, drawMesh, meshes, rboxMesh, capsuleMesh,
-    transparent, lines, style, loftMesh, drawBaked, span, beginViewmodel, endViewmodel, project, state, shadowOk, uploadTextures };
+    transparent, lines, style, loftMesh, drawBaked, setLights, span, beginViewmodel, endViewmodel, project, state, shadowOk, uploadTextures };
 }
 
 const norm3 = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };

@@ -14,7 +14,7 @@ export const DEFAULTS = {
   audio: { master: 0.8, sfx: 1, ui: 0.8, music: 0.35 },
   mouse: { sens: 1.0, adsMult: 0.7, invert: false },
   pad: { sens: 1.0, deadzone: 0.15, invert: false },
-  sight: { shape: 'dot', color: 'red', size: 1 },
+  sight: { shape: 'cross', color: 'red', size: 1 },
   hud: { minimap: true, mapSize: 1, mapRotate: true },
   access: { colorVision: 'none', shapeCues: false, reduceShake: false },
   keys: {

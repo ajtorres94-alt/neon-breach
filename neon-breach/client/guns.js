@@ -5,9 +5,9 @@
 
 import * as G from './geom.js';
 
-const B = (x, y, z, sx, sy, sz, c, r, pt = 0, rl = 0) => ({ k: 'b', x, y, z, sx, sy, sz, c, r, pt, rl });
-const T = (x0, y0, z0, x1, y1, z1, r, c, r1) => ({ k: 't', x0, y0, z0, x1, y1, z1, r, c, r1: r1 ?? r });
-const E = (x, y, z, rx, ry, rz, c) => ({ k: 'e', x, y, z, rx, ry, rz, c });
+export const B = (x, y, z, sx, sy, sz, c, r, pt = 0, rl = 0) => ({ k: 'b', x, y, z, sx, sy, sz, c, r, pt, rl });
+export const T = (x0, y0, z0, x1, y1, z1, r, c, r1) => ({ k: 't', x0, y0, z0, x1, y1, z1, r, c, r1: r1 ?? r });
+export const E = (x, y, z, rx, ry, rz, c) => ({ k: 'e', x, y, z, rx, ry, rz, c });
 
 /** Curved magazine: a chain of tilted boxes from (x, ytop, ztop) curving towards -z (like an AK or MP5 mag). */
 function mag(c, x, ytop, ztop, len, w, d, curve, n = 5) {
@@ -495,11 +495,54 @@ for (const [id, gun] of Object.entries(GUNS)) {
   for (const p of a) { if (!p || typeof p !== 'object' || (p.k === 'b' && !(p.sx > 0 && p.sy > 0 && p.sz > 0)) || (p.k === 't' && !(p.r > 0)) || (p.k !== 'b' && p.k !== 't' && p.k !== 'e')) continue; gun.parts.push(p); }
 }
 
+// ---- micro-detail: every gun is brought to PARTS_PER_GUN parts with deterministic surface detail (screw heads, rivets, hex bolts, machining
+// grooves, knurling, stippling, engraving ticks, weld beads, cooling slots) scattered over its real surfaces in proportion to their area.
+export const PARTS_PER_GUN = 5000;
+export function microDetail(gun, seedStr) {
+  let h = 2166136261; for (const ch of seedStr) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; };
+  const src = gun.parts.filter(p => (p.k === 'b' && !p.pt && !p.rl && Math.min(p.sx, p.sy, p.sz) >= 0.004 && Math.max(p.sx, p.sy, p.sz) >= 0.02) || (p.k === 't' && p.r >= 0.006 && Math.hypot(p.x1 - p.x0, p.y1 - p.y0, p.z1 - p.z0) >= 0.02));
+  if (!src.length) return;
+  const start = gun.parts.length;
+  const wt = src.map(p => p.k === 'b' ? 2 * (p.sx * p.sy + p.sy * p.sz + p.sx * p.sz) : 6.283 * p.r * Math.hypot(p.x1 - p.x0, p.y1 - p.y0, p.z1 - p.z0));
+  const cum = []; let tot = 0; for (const w of wt) cum.push(tot += w);
+  const pick = () => { const v = rnd() * tot; let lo = 0, hi = cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < v) lo = m + 1; else hi = m; } return src[lo]; };
+  const colFor = (p) => { const k = rnd() < 0.5 ? 0.96 : 1.03, base = Array.isArray(p.c) ? p.c : p.c === 'w' ? [0.5, 0.38, 0.26] : p.c === 'g' ? [1, 0.8, 0.22] : p.c === 'a' ? [0.4, 0.3, 0.2] : p.c === 'p' ? [0.22, 0.22, 0.24] : [0.3, 0.31, 0.34]; return base.map(v => v * k); };
+  while (gun.parts.length < PARTS_PER_GUN) {
+    const p = pick(), kind = rnd(), c = colFor(p), u = rnd(), v = rnd(), q = 0.0006 + rnd() * 0.0012;
+    let x, y, z, nx = 0, ny = 0, nz = 0;
+    if (p.k === 'b') {
+      const ax = p.sx * p.sy, ay = p.sy * p.sz, az = p.sx * p.sz, r = rnd() * (ax + ay + az), sgn = rnd() < 0.5 ? -1 : 1;
+      if (r < ax) { nz = sgn; x = p.x + (u - 0.5) * p.sx * 0.9; y = p.y + (v - 0.5) * p.sy * 0.9; z = p.z + sgn * p.sz / 2; }
+      else if (r < ax + ay) { nx = sgn; y = p.y + (u - 0.5) * p.sy * 0.9; z = p.z + (v - 0.5) * p.sz * 0.9; x = p.x + sgn * p.sx / 2; }
+      else { ny = sgn; x = p.x + (u - 0.5) * p.sx * 0.9; z = p.z + (v - 0.5) * p.sz * 0.9; y = p.y + sgn * p.sy / 2; }
+    } else {
+      const t = u, an = v * 6.283, dx = p.x1 - p.x0, dy = p.y1 - p.y0, dz = p.z1 - p.z0, l = Math.hypot(dx, dy, dz), ux = dx / l, uy = dy / l, uz = dz / l;
+      let ax = Math.abs(uy) < 0.9 ? 0 : 1, ay = Math.abs(uy) < 0.9 ? 1 : 0, az = 0;                       // any vector not parallel to the axis
+      let e1x = uy * az - uz * ay, e1y = uz * ax - ux * az, e1z = ux * ay - uy * ax; const e1l = Math.hypot(e1x, e1y, e1z) || 1; e1x /= e1l; e1y /= e1l; e1z /= e1l;
+      const e2x = uy * e1z - uz * e1y, e2y = uz * e1x - ux * e1z, e2z = ux * e1y - uy * e1x, rr = p.r + (p.r1 - p.r) * t;
+      nx = Math.cos(an) * e1x + Math.sin(an) * e2x; ny = Math.cos(an) * e1y + Math.sin(an) * e2y; nz = Math.cos(an) * e1z + Math.sin(an) * e2z;
+      x = p.x0 + dx * t + nx * rr; y = p.y0 + dy * t + ny * rr; z = p.z0 + dz * t + nz * rr;
+    }
+    const o = q * 0.2;                                                                    // sit just proud of the surface
+    x += nx * o; y += ny * o; z += nz * o;
+    const flat = (sx, sy, sz) => B(x, y, z, nx ? q * 0.5 : sx, ny ? q * 0.5 : sy, nz ? q * 0.5 : sz, c, 0.0004);
+    if (kind < 0.3) gun.parts.push(flat(q, q, q));                                          // screw / rivet head
+    else if (kind < 0.45) gun.parts.push(flat(q * 0.5, q * 0.5, q * 0.5), B(x + (nx ? o : 0), y + (ny ? o : 0), z + (nz ? o : 0), q * 0.9, q * 0.9, q * 0.9, c, 0.0003));   // hex bolt: washer + head
+    else if (kind < 0.62) gun.parts.push(B(x, y, z, nx ? q * 0.4 : q * 3, ny ? q * 0.4 : q * 0.5, nz ? q * 0.4 : q * 0.5, c, 0.0003));   // machined groove (x-aligned)
+    else if (kind < 0.76) gun.parts.push(B(x, y, z, nx ? q * 0.4 : q * 0.5, ny ? q * 0.4 : q * 3, nz ? q * 0.4 : q * 0.5, c, 0.0003));   // groove (y-aligned)
+    else if (kind < 0.88) gun.parts.push(B(x, y, z, nx ? q * 0.4 : q * 0.5, ny ? q * 0.4 : q * 0.5, nz ? q * 0.4 : q * 3, c, 0.0003));   // groove (z-aligned) / engraving tick
+    else gun.parts.push(B(x, y, z, nx ? q * 0.3 : q * 2.2, ny ? q * 0.3 : q * 2.2, nz ? q * 0.3 : q * 2.2, rnd() < 0.5 ? 'm' : 'd', 0.0003));   // weld bead / cooling slot
+  }
+  for (let i = start; i < gun.parts.length; i++) gun.parts[i].f = 1;
+}
+for (const [id, gun] of Object.entries(GUNS)) { gun.nDetail = gun.parts.length; microDetail(gun, id); }
+
 
 // ================================================================== baking + drawing
 // Every gun is baked once into merged meshes per material group (vertex colours carry the per-part colour), so drawing a gun costs
 // a handful of draw calls however many parts it has. Two levels of detail: all parts (near) and the silhouette parts only (far).
-const GROUPS = [['gunmetal', 0.7, 0], ['polymer', 0.3, 0], ['gunwood', 0.25, 0], ['plain', 0.5, 0], ['glow', 1.2, 0.9]];
+const GROUPS = [['gunmetal', 0.7, 0], ['polymer', 0.3, 0], ['gunwood', 0.25, 0], ['plain', 0.5, 0], ['micro', 0.0, 0], ['glow', 1.2, 0.9]];
 const groupOf = (c, gold) => (gold ? 'plain' : c === 'r' ? 'glow' : Array.isArray(c) ? 'polymer' : c === 'm' || c === 'd' ? 'gunmetal' : c === 'p' ? 'polymer' : c === 'w' ? 'gunwood' : 'plain');
 const colOf = (c, accent, gold) => (gold ? GUN_COL.g : Array.isArray(c) ? c : c === 'a' ? accent.map(v => v * 0.38) : GUN_COL[c] || GUN_COL.m);
 const meshCache = new Map();
@@ -508,12 +551,12 @@ const CUBE = () => cached('cube', () => G.genCube());
 function bakeGroup(gun, group, accent, gold, nParts) {
   const out = [], R = new Float32Array(9);
   for (let n = 0; n < nParts; n++) {
-    const p = gun.parts[n]; if (groupOf(p.c, gold) !== group) continue;
+    const p = gun.parts[n]; if ((p.f ? 'micro' : groupOf(p.c, gold)) !== group) continue;
     const col = colOf(p.c, accent, gold);
     if (p.k === 'b') {
       const r = Math.min((p.r ?? 0.01) * 0.4, 0.006), small = r < 0.0035 || Math.min(p.sx, p.sy, p.sz) < 0.011;
       G.rotYXZ(R, 0, p.pt || 0, p.rl || 0);
-      if (small) G.appendMesh(out, CUBE(), [p.x, p.y, p.z], R, [p.sx, p.sy, p.sz], col);
+      if (small) G.appendMesh(out, CUBE(), [p.x, p.y, p.z], R, [p.sx, p.sy, p.sz], col, p.f ? 0.02 : 1);
       else G.appendMesh(out, cached(`rb${p.sx.toFixed(4)},${p.sy.toFixed(4)},${p.sz.toFixed(4)},${r.toFixed(4)}`, () => G.genRBox(p.sx / 2, p.sy / 2, p.sz / 2, r, 1e9, true)), [p.x, p.y, p.z], R, [1, 1, 1], col);
     } else if (p.k === 't') {
       const dx = p.x1 - p.x0, dy = p.y1 - p.y0, dz = p.z1 - p.z0, len = Math.hypot(dx, dy, dz); if (len < 1e-5) continue;
@@ -530,14 +573,14 @@ function bakeGroup(gun, group, accent, gold, nParts) {
  * Draw a gun. o: { origin:[x,y,z] weapon-space origin in world/view space, yaw, pitch (rotation of the weapon), accent, gold, far (use the low-detail mesh) }
  */
 export function drawGun(R, gun, o) {
-  const { origin, yaw = 0, pitch = 0, accent = [0.5, 0.5, 0.5], far = false } = o, gold = !!gun.gold || !!o.gold;
-  const n = far ? gun.nBase : gun.parts.length, rot = R.rotate(yaw, pitch);
-  const key = `gun:${gun.id}:${gold ? 'g' : accent.map(v => Math.round(v * 20)).join('.')}:${far ? 0 : 1}`;
+  const { origin, yaw = 0, pitch = 0, accent = [0.5, 0.5, 0.5], far = false, scale = 1 } = o, gold = !!gun.gold || !!o.gold;
+  const n = far ? gun.nBase : o.mid ? gun.nDetail : gun.parts.length, rot = R.rotate(yaw, pitch);
+  const key = `gun:${gun.id}:${gold ? 'g' : accent.map(v => Math.round(v * 20)).join('.')}:${far ? 0 : o.mid ? 2 : 1}`;
   for (const [name, spec, emit] of GROUPS) {
     const mesh = R.loftMesh(`${key}:${name}`, () => bakeGroup(gun, name, accent, gold, n));
     if (!mesh || !mesh.count) continue;
-    R.texture(name === 'glow' ? 'plain' : name, 1);
-    R.drawBaked(mesh, origin[0], origin[1], origin[2], rot, gold ? 1.1 : spec, gold && name === 'plain' ? 0.25 : emit);
+    R.texture(name === 'glow' || name === 'micro' ? 'plain' : name, 1);
+    R.drawBaked(mesh, origin[0], origin[1], origin[2], rot, gold ? 1.1 : spec, gold && name === 'plain' ? 0.25 : emit, scale);
   }
   R.texture('plain');
 }

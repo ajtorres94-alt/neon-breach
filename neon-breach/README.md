@@ -92,3 +92,33 @@ Set dressing lives in `client/clutter.js`: per-map debris, tyres, cones, pallets
 - Every map is enclosed by a ceiling with light strips; almost all waist-high cover is now full-height partitions (a few low pieces remain). This is applied in `enclose()` in `shared/maps.js`.
 - Guns are built from 100-260 parts each (rails, serrations, vents, sights, controls...) baked into merged meshes with a distant low-detail version.
 - To use recorded sound effects, see `client/sounds/README.md` (only audio you have rights to use).
+
+## Lighting, detail and HUD (latest round)
+- **Dynamic lighting** (`client/lights.js`, shader in `client/gl.js`): every map gets ceiling lamps hung from the roof strips, floor uplights along the walls
+  (some flicker) and eight sweeping flood lights. The renderer lights surfaces with the 8 most relevant lights per frame, plus transient
+  muzzle-flash and explosion lights. Fixtures and soft light beams are drawn in the world.
+- **Gun detail**: every gun now has at least 5000 parts (`PARTS_PER_GUN` in `client/guns.js`): the hand-built silhouette and detail kits plus
+  deterministic surface micro-detail (screw heads, bolts, grooves, weld beads). Guns are baked once into a few meshes, with three levels of detail
+  (silhouette / detail kit / full) chosen by distance.
+- **Item icons** (`client/items.js`): weapon pickups show the real gun model; medkit, armour, ammo crate, laser mine, knives and proximity mine are
+  detailed 5000-part models too.
+- **Crosshair**: a cross that opens up when you move, jump, sprint or fire, closes when you crouch or aim. Ring and chevron styles remain in Settings.
+- **Hands** in the first-person view are 20% larger and lighter, with knuckle and glove-plate detail.
+
+## Killstreaks
+Kills in a row without dying earn a pick-one reward at **3, 5 and 7**. A menu appears above your HUD; press **1 / 2 / 3** to choose (12 s, then the first option that fits is picked for you). Rewards queue if you earn another before choosing. Kills made by your own units do not count toward the next streak.
+
+| Streak | Choices |
+|---|---|
+| 3 | **UAV** (enemies on your minimap, 30 s, shared with your team) · **Metal helmet** (absorbs one headshot) · **Wall boots** (hold forward into a wall to run up it; lasts until you die) |
+| 5 | **Attack dog** (75 hp, hunts the nearest enemy) · **Sentry gun** (immobile, 100 rounds, auto-targets enemies in line of sight, 150 hp) · **Barrier** (spans the hallway ahead wall to wall, 300 hp, blocks movement and bullets) |
+| 7 | **Radar** (60 s, every player and the way they face) · **Rat swarm** (10 rats, 1000 shared life, 80 dps) · **Clone** (50 hp, stays within ~0.8 m of you, copies your weapon and shoots enemies) |
+
+Units are server-side (`server/streaks.js`, tuned in `shared/weapons.js` → `STREAK_UNITS`), show health bars, can be shot, blasted or knifed, and are listed in the kill feed. `node test/streaks.js` covers all nine rewards.
+
+## Character and killstreak detail
+
+Soldiers, clones, dogs, sentries, rats and barriers carry far more than 3000 triangles each (roughly 15-20k per soldier/dog/sentry/barrier, ~37k for the 10-rat swarm), so this round added *visible* detail instead of raw count:
+laced and treaded boots, cargo pockets, plate-carrier pouches and webbing, fingers, watch, headset and NVG mount on soldiers; fur, jaw and teeth, harness and claws on dogs;
+gimbal, sensor head, radar dish, ammo belt and tripod joints on sentries; legs, whiskers and teeth on rats; bolts, chevrons, beacons and conduit on barriers.
+Tiny parts use low-poly spheres and scaled cubes to keep the cost down.

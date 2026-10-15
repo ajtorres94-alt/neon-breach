@@ -233,7 +233,7 @@ const TABS = {
     N('gfx.fogScale', 'View distance', 0.6, 1.8, 0.05), C('gfx.particles', 'Impact particles'),
   ] },
   Sight: { reset: ['sight'], items: [
-    SEL('sight.shape', 'Reticle shape', [['dot', 'Red dot'], ['cross', 'Crosshair'], ['circle', 'Ring'], ['chevron', 'Chevron']]),
+    SEL('sight.shape', 'Reticle shape', [['cross', 'Crosshair'], ['circle', 'Ring'], ['chevron', 'Chevron']]),
     SEL('sight.color', 'Reticle colour', [['red', 'Red'], ['green', 'Green']]), N('sight.size', 'Reticle size', 0.6, 2.2, 0.1),
   ] },
   Audio: { reset: ['audio'], items: [

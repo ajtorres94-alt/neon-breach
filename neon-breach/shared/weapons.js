@@ -101,3 +101,31 @@ export const MAX_PLAYERS = 8;
 export const TICK_RATE = 30;
 export const RESPAWN_TIME = 3;
 export const PROTECT_TIME = 1.5;
+
+// ---------------------------------------------------------------- killstreaks
+// Kills in a row (without dying) at 3 / 5 / 7 earn a pick-one reward. Kills made by your own units don't count toward the next streak.
+export const STREAK_TIERS = [3, 5, 7];
+export const STREAK_OPTIONS = {
+  3: ['uav', 'helmet', 'wall'],
+  5: ['dog', 'sentry', 'barrier'],
+  7: ['radar', 'rats', 'clone'],
+};
+export const STREAK_INFO = {
+  uav:     { name: 'UAV',            desc: 'Reveals enemy positions on your minimap for 30s' },
+  helmet:  { name: 'Metal Helmet',   desc: 'Absorbs one headshot' },
+  wall:    { name: 'Wall Boots',     desc: 'Hold forward into a wall to climb and run up it' },
+  dog:     { name: 'Attack Dog',     desc: 'Hunts enemies, 75 health' },
+  sentry:  { name: 'Sentry Gun',     desc: 'Immobile, 100 rounds, auto-targets enemies' },
+  barrier: { name: 'Barrier',        desc: 'Auto-fits the hallway ahead, 300 health' },
+  radar:   { name: 'Radar',          desc: '60s: every player and the way they face' },
+  rats:    { name: 'Rat Swarm',      desc: '10 rats hunt together: 1000 total life, 80 dps' },
+  clone:   { name: 'Clone',          desc: 'Half your health, stays at your side, attacks enemies' },
+};
+export const STREAK_UNITS = {
+  dog:    { hp: 75, life: 70, speed: 10, bite: 20, biteEvery: 0.5, r: 0.45, h: 0.9 },
+  sentry: { hp: 150, rounds: 100, rate: 9, dmg: 9, range: 40, turn: 4.5, r: 0.45, h: 1.15, life: 120 },
+  barrier:{ hp: 300, life: 120, thick: 0.5, height: 3.2, maxSide: 9 },
+  rats:   { hp: 1000, count: 10, dps: 80, speed: 6.5, life: 60, r: 1.0, h: 0.6 },
+  clone:  { hp: 50, life: 120, offset: 0.8, range: 40, r: 0.45, h: 1.8 },
+  uavTime: 30, radarTime: 60, offerTime: 12,
+};
