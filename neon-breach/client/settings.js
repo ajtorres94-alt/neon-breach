@@ -61,12 +61,12 @@ export function bindLabel(code) {
 
 // ------------------------------------------------------------------ operators (cosmetic skins)
 export const OPERATORS = [
-  { name: 'Viper',   suit: [0.16, 0.18, 0.22], trim: [0.85, 0.2, 0.25], skin: [0.85, 0.66, 0.52], visor: [1, 0.3, 0.3] },
-  { name: 'Halo',    suit: [0.90, 0.92, 0.95], trim: [0.2, 0.55, 0.95], skin: [0.62, 0.45, 0.34], visor: [0.4, 0.9, 1] },
-  { name: 'Moss',    suit: [0.20, 0.30, 0.20], trim: [0.7, 0.8, 0.3], skin: [0.45, 0.32, 0.24], visor: [0.8, 1, 0.4] },
-  { name: 'Saffron', suit: [0.75, 0.55, 0.15], trim: [0.15, 0.12, 0.1], skin: [0.88, 0.7, 0.55], visor: [1, 0.85, 0.3] },
-  { name: 'Orchid',  suit: [0.40, 0.22, 0.55], trim: [0.95, 0.7, 0.95], skin: [0.78, 0.6, 0.48], visor: [0.9, 0.5, 1] },
-  { name: 'Slate',   suit: [0.35, 0.38, 0.44], trim: [0.95, 0.95, 0.98], skin: [0.36, 0.26, 0.2], visor: [0.7, 0.8, 1] },
+  { name: 'Viper', camo: 'camoUrban', hair: [0.1, 0.07, 0.05],   suit: [0.16, 0.18, 0.22], trim: [0.85, 0.2, 0.25], skin: [0.85, 0.66, 0.52], visor: [1, 0.3, 0.3], hat: 'balaclava', hatCol: [0.1, 0.1, 0.12] },
+  { name: 'Halo', camo: 'camoDesert', hair: [0.08, 0.06, 0.05],    suit: [0.90, 0.92, 0.95], trim: [0.2, 0.55, 0.95], skin: [0.62, 0.45, 0.34], visor: [0.4, 0.9, 1], hat: 'hardhat',   hatCol: [0.96, 0.76, 0.16] },
+  { name: 'Moss', camo: 'camoWood', hair: [0.06, 0.05, 0.04],    suit: [0.20, 0.30, 0.20], trim: [0.7, 0.8, 0.3], skin: [0.45, 0.32, 0.24], visor: [0.8, 1, 0.4], hat: 'helmet',    hatCol: [0.3, 0.38, 0.24] },
+  { name: 'Saffron', camo: 'camoDesert', hair: [0.3, 0.2, 0.1], suit: [0.75, 0.55, 0.15], trim: [0.15, 0.12, 0.1], skin: [0.88, 0.7, 0.55], visor: [1, 0.85, 0.3], hat: 'cap',       hatCol: [0.72, 0.22, 0.14] },
+  { name: 'Orchid', camo: 'camoMulti', hair: [0.22, 0.12, 0.07],  suit: [0.40, 0.22, 0.55], trim: [0.95, 0.7, 0.95], skin: [0.78, 0.6, 0.48], visor: [0.9, 0.5, 1], hat: 'beanie',    hatCol: [0.9, 0.55, 0.8] },
+  { name: 'Slate', camo: 'camoUrban', hair: [0.05, 0.05, 0.05],   suit: [0.35, 0.38, 0.44], trim: [0.95, 0.95, 0.98], skin: [0.36, 0.26, 0.2], visor: [0.7, 0.8, 1], hat: 'headset',   hatCol: [0.12, 0.12, 0.14] },
 ];
 
 // ------------------------------------------------------------------ team palettes (CSS colour + RGB 0..1)

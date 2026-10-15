@@ -5,7 +5,7 @@
 export const TEX_SCALE = {          // metres per texture tile
   floor: 3, wall: 2.4, metal: 2.4, crate: 1.2, accent: 2.4, marble: 3, stone: 2.2, rock: 1.6, grass: 3, hedge: 1.4, dark: 3,
   glow: 2, asphalt: 4, sand: 1.2, brick: 2.0, wood: 2.2, rust: 2.4, concrete: 3.2, olive: 2.4, blue: 2.4, red: 2.4,
-  dirt: 3.2, hay: 1.5, leaf: 1.6, plain: 1, fabric: 0.5,
+  dirt: 3.2, hay: 1.5, leaf: 1.6, plain: 1, fabric: 0.5, camoWood: 1, camoDesert: 1, camoUrban: 1, camoMulti: 1, skin: 1, gunmetal: 1, polymer: 1, gunwood: 1,
 };
 
 // ---------------------------------------------------------------- noise helpers (all tileable)
@@ -155,8 +155,8 @@ function leafy(base, hi, F, seed) {
     return [c[0], c[1], c[2], lit];
   };
 }
-GEN.hedge = leafy([0.12, 0.32, 0.13], [0.26, 0.55, 0.2], 14, 101);
-GEN.leaf = leafy([0.17, 0.34, 0.12], [0.34, 0.54, 0.2], 14, 111);
+GEN.hedge = leafy([0.12, 0.32, 0.13], [0.26, 0.55, 0.2], 8, 101);
+GEN.leaf = leafy([0.17, 0.34, 0.12], [0.34, 0.54, 0.2], 6, 111);
 
 GEN.dark = (u, v) => {
   const pu = fr(u * 4), pv = fr(v * 4), e = Math.min(pu, 1 - pu, pv, 1 - pv), n = fbm(u, v, 8, 3, 121);
@@ -252,8 +252,46 @@ GEN.fabric = (u, v) => {
   return [c, c, c, w];
 };
 
+// ---------------------------------------------------------------- avatar and weapon materials
+function camo(cols, seed, F = 5) {
+  return (u, v) => {
+    const a = fbm(u, v, F, 4, seed), b = fbm(u, v, F * 1.3, 4, seed + 7), c = vnoise(u * F * 5, v * F * 5, F * 5, F * 5, seed + 13);
+    let col = cols[0];
+    if (a > 0.52) col = cols[1];
+    if (b > 0.58) col = cols[2];
+    if (c > 0.74 && a < 0.5) col = cols[3];
+    const fine = vnoise(u * 120, v * 120, 120, 120, seed + 21), weave = 0.5 + 0.5 * Math.sin(u * 220 * Math.PI) * Math.sin(v * 220 * Math.PI);
+    const k = 0.9 + (fine - 0.5) * 0.14 + weave * 0.06;
+    return [col[0] * k, col[1] * k, col[2] * k, weave * 0.6];
+  };
+}
+GEN.camoWood = camo([[0.30, 0.33, 0.20], [0.20, 0.26, 0.14], [0.42, 0.34, 0.20], [0.08, 0.09, 0.07]], 301);
+GEN.camoDesert = camo([[0.64, 0.54, 0.38], [0.52, 0.42, 0.28], [0.72, 0.65, 0.5], [0.36, 0.3, 0.22]], 311);
+GEN.camoUrban = camo([[0.36, 0.38, 0.4], [0.24, 0.26, 0.28], [0.5, 0.52, 0.54], [0.1, 0.11, 0.12]], 321);
+GEN.camoMulti = camo([[0.5, 0.45, 0.33], [0.36, 0.38, 0.26], [0.58, 0.51, 0.4], [0.27, 0.21, 0.16]], 331);
+GEN.skin = (u, v) => {
+  const n = fbm(u, v, 6, 4, 341), pore = vnoise(u * 90, v * 90, 90, 90, 342), ruddy = fbm(u, v, 3, 2, 343);
+  const k = 0.93 + (n - 0.5) * 0.12 + (pore - 0.5) * 0.05;
+  return [k * (1 + ruddy * 0.04), k * (0.99 - ruddy * 0.02), k * (0.98 - ruddy * 0.02), pore * 0.3];
+};
+GEN.gunmetal = (u, v) => {                                                 // parkerized steel: fine brushed grain, edge wear
+  const grain = vnoise(u * 300, v * 24, 300, 24, 351), grain2 = vnoise(u * 90, v * 90, 90, 90, 352), n = fbm(u, v, 4, 3, 353);
+  const k = 0.82 + (grain - 0.5) * 0.22 + (grain2 - 0.5) * 0.1 + (n - 0.5) * 0.1;
+  return [k, k * 1.01, k * 1.04, grain * 0.5];
+};
+GEN.polymer = (u, v) => {                                                  // stippled grip texture
+  const st = vnoise(u * 160, v * 160, 160, 160, 361), st2 = hash2(Math.floor(u * 80), Math.floor(v * 80), 362);
+  const k = 0.84 + (st - 0.5) * 0.2 + (st2 > 0.5 ? 0.05 : -0.03);
+  return [k, k, k * 1.02, st2];
+};
+GEN.gunwood = (u, v) => {                                                  // walnut grain, runs along u
+  const g = fbm(u * 1, v * 1, 3, 3, 371), line = Math.sin((v * 22 + g * 6 + vnoise(u * 3, v * 40, 3, 40, 372) * 3) * Math.PI);
+  const k = 0.7 + line * 0.12 + (g - 0.5) * 0.3, fine = vnoise(u * 200, v * 30, 200, 30, 373);
+  return [0.66 * k * (0.9 + fine * 0.2), 0.42 * k * (0.9 + fine * 0.2), 0.22 * k * (0.9 + fine * 0.2), line * 0.4];
+};
+
 // ---------------------------------------------------------------- baking
-function bake(size, fn, bump) {
+function bake(size, fn, bump, paintOverride) {
   const N = size * size, col = new Float32Array(N * 3), hgt = new Float32Array(N);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const o = fn((x + 0.5) / size, (y + 0.5) / size), i = y * size + x;
@@ -262,9 +300,25 @@ function bake(size, fn, bump) {
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const ctx = cv.getContext('2d'), img = ctx.createImageData(size, size), d = img.data;
   const at = (x, y) => hgt[((y + size) % size) * size + ((x + size) % size)];
+  const paint = paintOverride !== undefined ? paintOverride : bump > 0;
+  if (paint) for (let pass = 0; pass < 2; pass++) {                  // soften the relief so surfaces read as painted, not gritty
+    const src = hgt.slice();
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      let sum = 0; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) sum += src[((y + oy + size) % size) * size + ((x + ox + size) % size)];
+      hgt[y * size + x] = src[y * size + x] * 0.35 + (sum / 9) * 0.65;
+    }
+  }                                          // painterly: soften fine noise, richer colour, gentler relief
+  const cat = (x, y, k) => col[(((y + size) % size) * size + ((x + size) % size)) * 3 + k];
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const i = y * size + x, dh = (at(x - 1, y - 1) - at(x + 1, y + 1)) * bump, s = clamp(1 + dh, 0.45, 1.6);
-    d[i * 4] = clamp(col[i * 3] * s) * 255; d[i * 4 + 1] = clamp(col[i * 3 + 1] * s) * 255; d[i * 4 + 2] = clamp(col[i * 3 + 2] * s) * 255; d[i * 4 + 3] = 255;
+    const i = y * size + x, dh = (at(x - 1, y - 1) - at(x + 1, y + 1)) * bump * 1.1, s = clamp(1 + dh, 0.5, 1.5);
+    const c3 = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      let v = col[i * 3 + k];
+      if (paint) { let sum = 0; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) sum += cat(x + ox, y + oy, k); v = v * 0.4 + (sum / 9) * 0.6; }
+      c3[k] = v;
+    }
+    if (paint) { const l = c3[0] * 0.3 + c3[1] * 0.59 + c3[2] * 0.11; for (let k = 0; k < 3; k++) c3[k] = clamp(l + (c3[k] - l) * 1.22); }
+    d[i * 4] = clamp(c3[0] * s) * 255; d[i * 4 + 1] = clamp(c3[1] * s) * 255; d[i * 4 + 2] = clamp(c3[2] * s) * 255; d[i * 4 + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
   return cv;
@@ -276,8 +330,9 @@ export function buildTextures(quality = 'high') {
   const pot = (n) => (n >= 256 ? 256 : n >= 128 ? 128 : 64);
   const out = {};
   for (const name of Object.keys(GEN)) {
-    const size = name === 'plain' ? 4 : name === 'fabric' ? 64 : pot(base);
-    out[name] = bake(size, GEN[name], name === 'glow' || name === 'plain' ? 0 : 1.15);
+    const crisp = /^(camo|skin|gunmetal|polymer|gunwood|fabric)/.test(name);
+    const size = name === 'plain' ? 4 : name === 'fabric' ? 64 : crisp ? Math.min(128, pot(base)) : pot(base);
+    out[name] = bake(size, GEN[name], name === 'glow' || name === 'plain' ? 0 : crisp ? 0.5 : 1.15, crisp ? false : undefined);
   }
   out.rock = out.rock || out.stone;
   return out;

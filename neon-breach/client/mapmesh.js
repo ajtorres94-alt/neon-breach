@@ -4,10 +4,13 @@
 
 import { TEX_SCALE } from './textures.js';
 import * as G from './geom.js';
+import { scatterClutter } from './clutter.js';
 
 const CELL = 1.6;                                   // max face-grid cell (metres): AO and texture detail resolution
 const AO_R = 1.9, AO_STRENGTH = 0.62;
-const ROUNDED = { hedge: 0.32, sand: 0.2, rock: 0.5, leaf: 0.4, crate: 0.035, hay: 0.25 };
+const ROUNDED = { hedge: 0.32, sand: 0.2, rock: 0.5, leaf: 0.4, crate: 0.09, hay: 0.25,
+  // chamfered edges on architecture so nothing reads as a hard-edged cube
+  wall: 0.07, concrete: 0.08, metal: 0.07, stone: 0.08, marble: 0.07, brick: 0.07, wood: 0.06, rust: 0.09, olive: 0.09, blue: 0.09, red: 0.09, dark: 0.06, accent: 0.05, dirt: 0.12 };
 
 // ---------------------------------------------------------------- shared unit meshes
 let UNIT = null;
@@ -81,7 +84,7 @@ export function buildMapMesh(map) {
     const rr = ROUNDED[mat];
     if (rr && Math.min(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0) > rr * 1.2) {
       const hx = (b.x1 - b.x0) / 2, hy = (b.y1 - b.y0) / 2, hz = (b.z1 - b.z0) / 2, c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2];
-      const m = G.genRBox(hx, hy, hz, rr, CELL);
+      const m = G.genRBox(hx, hy, hz, rr, CELL, rr <= 0.12);
       for (let i = 0; i < m.length; i += G.STRIDE) {
         const p = [m[i] + c[0], m[i + 1] + c[1], m[i + 2] + c[2]], n = [m[i + 3], m[i + 4], m[i + 5]];
         const ax = Math.abs(n[0]) > Math.abs(n[1]) && Math.abs(n[0]) > Math.abs(n[2]) ? 0 : Math.abs(n[1]) > Math.abs(n[2]) ? 1 : 2;
@@ -207,6 +210,7 @@ export function buildMapMesh(map) {
     },
   };
   for (const d of map.decor || []) { const f = DECOR[d.k]; if (f) f(d); }
+  scatterClutter(map, { put, rbox: (hx, hy, hz, r) => cached(`cb${hx.toFixed(3)},${hy.toFixed(3)},${hz.toFixed(3)},${r.toFixed(3)}`, () => G.genRBox(hx, hy, hz, r, 1e9, true)), frustum, U, boxes, near });
 
   return groups;
 }

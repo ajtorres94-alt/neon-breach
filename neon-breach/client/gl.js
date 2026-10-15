@@ -53,11 +53,12 @@ export const MATERIALS = {
 
 const VS = `
 attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol; attribute vec2 aUV;
-uniform mat4 uVP; uniform mat4 uModel; uniform mat3 uRot; uniform vec3 uInvS; uniform mat4 uLightVP; uniform float uUVMul;
+uniform mat4 uVP; uniform mat4 uModel; uniform mat3 uRot; uniform vec3 uInvS; uniform mat4 uLightVP; uniform float uUVMul; uniform float uOutline; uniform vec3 uCam;
 varying vec3 vWorld; varying vec3 vNor; varying vec3 vCol; varying vec2 vUV; varying vec4 vLP;
 void main(){
   vec4 w = uModel * vec4(aPos,1.0);
   vWorld = w.xyz; vNor = uRot * (aNor * uInvS); vCol = aCol; vUV = aUV * uUVMul; vLP = uLightVP * w;
+  if (uOutline > 0.0) { float dd = length(w.xyz - uCam); w.xyz += normalize(vNor) * uOutline * (1.0 + dd * 0.045); }
   gl_Position = uVP * w;
 }`;
 
@@ -73,7 +74,7 @@ uniform vec3 uTint; uniform float uUseTint; uniform float uEmit; uniform float u
 uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uGnd;
 uniform vec3 uFog; uniform vec2 uFogRange; uniform vec3 uCam; uniform float uFogOn;
 uniform float uBright; uniform float uLight; uniform float uFlash;
-uniform float uShadowOn; uniform float uShadowTexel; uniform float uShadowQ;
+uniform float uShadowOn; uniform float uShadowTexel; uniform float uShadowQ; uniform float uRim; uniform float uOutlineOn;
 float unpackD(vec4 c){ return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
 float shadowAt(float ndl){
   vec3 p = vLP.xyz / vLP.w * 0.5 + 0.5;
@@ -88,19 +89,35 @@ float shadowAt(float ndl){
   return s / 9.0;
 }
 void main(){
+  if (uOutlineOn > 0.5) {
+    vec3 oc = vec3(0.055, 0.045, 0.05) * uBright;
+    if (uFogOn > 0.5) { float d0 = length(vWorld - uCam); oc = mix(oc, uFog, clamp((d0 - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0)); }
+    gl_FragColor = vec4(oc, 1.0); return;
+  }
   vec3 n = normalize(vNor);
   vec3 base = texture2D(uTex, vUV).rgb * mix(vCol, uTint, uUseTint);
   vec3 L = normalize(uSun);
   float ndl = max(dot(n, L), 0.0);
   float sh = uShadowOn > 0.5 ? shadowAt(ndl) : 1.0;
+  // painterly ramp: soft half-lambert with a cool, saturated shadow side and a warm sunlit side
+  float wrap = smoothstep(0.12, 0.82, dot(n, L) * 0.55 + 0.45);
   vec3 amb = mix(uGnd, uSky, 0.5 + 0.5 * n.y);
-  vec3 lit = (amb + uSunCol * ndl * sh) * uLight;
+  vec3 shade = amb * vec3(0.92, 0.97, 1.08);
+  vec3 sunl = uSunCol * vec3(1.06, 1.0, 0.9) * wrap * mix(0.35, 1.0, sh);
+  vec3 lit = (shade * 0.92 + sunl * (0.55 + 0.45 * sh) * 0.8) * uLight;
   vec3 col = base * lit * uBright;
+  vec3 V = normalize(uCam - vWorld);
   if (uSpec > 0.0) {
-    vec3 V = normalize(uCam - vWorld), H = normalize(L + V);
+    vec3 H = normalize(L + V);
     col += uSunCol * pow(max(dot(n, H), 0.0), 36.0) * uSpec * (0.25 + 0.75 * sh) * uBright;
     col += uSky * pow(1.0 - max(dot(n, V), 0.0), 3.0) * uSpec * 0.25 * uBright;       // rim sheen
   }
+  if (uRim > 0.0) {                                                                   // TF2-style rim light
+    float rim = pow(1.0 - max(dot(n, V), 0.0), 2.6) * smoothstep(-0.2, 0.6, dot(n, L) + 0.35);
+    col += (uSky * 0.7 + uSunCol * 0.45) * rim * uRim * uBright;
+  }
+  float lum = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(lum), col, 1.14);                                                    // colour grade: richer saturation
   col = mix(col, base * uBright, uEmit);
   col += vec3(uFlash);
   if (uFogOn > 0.5) {
@@ -224,6 +241,7 @@ export function createRenderer(canvas, opts = {}) {
   }
   const rboxMesh = (hx, hy, hz, r) => cached(`rb${hx.toFixed(3)},${hy.toFixed(3)},${hz.toFixed(3)},${r.toFixed(3)}`, () => G.genRBox(hx, hy, hz, r));
   const capsuleMesh = (r, len) => cached(`cp${r.toFixed(3)},${len.toFixed(3)}`, () => G.genCapsule(r, len));
+  const loftMesh = (key, make) => cached('lf' + key, make);
   const frustumMesh = (rt, rb) => cached(`fr${rt.toFixed(3)},${rb.toFixed(3)}`, () => G.genFrustum(rt, rb, 16, true));
 
   const skyBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, skyBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -304,6 +322,7 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform1f(U.uLight, light); gl.uniform1f(U.uBright, state.bright);
     gl.uniform3fv(U.uCam, state.cam); gl.uniform1f(U.uFlash, 0); gl.uniform1f(U.uSpec, 0); gl.uniform1f(U.uUVMul, 1);
     gl.uniform3f(U.uInvS, 1, 1, 1);
+    gl.uniform1f(U.uRim, 0.12); gl.uniform1f(U.uOutlineOn, 0); gl.uniform1f(U.uOutline, 0); state.outlineW = 0; state.inVM = false;
   }
 
   function resize(w, h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
@@ -369,7 +388,14 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform1f(U.uUseTint, 1); gl.uniform3fv(U.uTint, col);
     gl.uniform1f(U.uEmit, emit); gl.uniform1f(U.uAlpha, alpha); gl.uniform1f(U.uFlash, flash); gl.uniform1f(U.uSpec, spec);
     gl.drawArrays(gl.TRIANGLES, 0, m.count);
+    if (state.outlineW > 0 && alpha > 0.99 && emit < 0.6 && !state.inVM) {          // inverted-hull outline
+      gl.cullFace(gl.FRONT); gl.uniform1f(U.uOutlineOn, 1); gl.uniform1f(U.uOutline, state.outlineW);
+      gl.drawArrays(gl.TRIANGLES, 0, m.count);
+      gl.uniform1f(U.uOutlineOn, 0); gl.uniform1f(U.uOutline, 0); gl.cullFace(gl.BACK);
+    }
   }
+  /** Set the dynamic-object look: outline width (metres, 0 = off) and rim-light strength. */
+  function style(o = {}) { state.outlineW = o.outline || 0; gl.uniform1f(U.uRim, o.rim || 0); }
   const rotate = (yaw, pitch, roll = 0) => G.rotYXZ(rot, yaw, pitch, roll);
 
   /** Sharp box: centre, size, yaw (+pitch about its centre), colour, emissive 0..1, alpha. */
@@ -396,6 +422,12 @@ export function createRenderer(canvas, opts = {}) {
     // frustum mesh: unit height, bottom radius 1 (scaled to r0), top radius r1/r0; +Y points from a towards b
     drawMesh(m, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, G.alignY(tmpR, dx, dy, dz), r0, len, r0, col, emit, alpha, spec);
   }
+  /** Draw a unit-length (y in [-0.5,0.5]) mesh stretched between two points; sr scales its radius. */
+  function span(m, ax, ay, az, bx, by, bz, sr, col, spec = 0, emit = 0) {
+    const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz);
+    if (len < 1e-4) return;
+    drawMesh(m, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, G.alignY(tmpR, dx, dy, dz), sr, len, sr, col, emit, 1, spec);
+  }
   function sphere(x, y, z, rx, ry, rz, col, emit = 0, alpha = 1, spec = 0, yaw = 0, pitch = 0) { drawMesh(meshes.sphere, x, y, z, rotate(yaw, pitch), rx, ry, rz, col, emit, alpha, spec); }
   function blob(x, y, z, r, alpha) { drawMesh(meshes.disc, x, y + 0.02, z, IDENT3, r, 1, r, [0, 0, 0], 0, alpha); }
   function texture(name, uvMul = 1) { setTex(name || 'plain'); gl.uniform1f(U.uUVMul, uvMul); }
@@ -421,6 +453,7 @@ export function createRenderer(canvas, opts = {}) {
 
   /** Draw in camera space after clearing depth (first-person weapon). */
   function beginViewmodel(fov) {
+    state.inVM = true; gl.uniform1f(U.uRim, 0.35);
     gl.clear(gl.DEPTH_BUFFER_BIT);
     const proj = M4.perspective(M4.ident(), fov, canvas.width / canvas.height, 0.02, 20);
     gl.uniformMatrix4fv(U.uVP, false, proj);
@@ -430,6 +463,7 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform1f(U.uLight, Math.max(1.0, state.theme.light) * (state.dim < 1 ? 0.85 : 1));
   }
   function endViewmodel() {
+    state.inVM = false; gl.uniform1f(U.uRim, 0.12);
     gl.uniformMatrix4fv(U.uVP, false, state.vp); gl.uniform1f(U.uFogOn, 1); gl.uniform1f(U.uShadowOn, shadowOk ? 1 : 0);
     gl.uniform3fv(U.uCam, state.cam); gl.uniform3fv(U.uSun, state.theme.sun); gl.uniform1f(U.uSpec, 0); setCommonLight();
   }
@@ -445,7 +479,7 @@ export function createRenderer(canvas, opts = {}) {
   }
 
   return { gl, setMap, resize, begin, box, rbox, boxRot, limb, tube, sphere, blob, texture, rotate, drawMesh, meshes, rboxMesh, capsuleMesh,
-    transparent, lines, beginViewmodel, endViewmodel, project, state, shadowOk, uploadTextures };
+    transparent, lines, style, loftMesh, span, beginViewmodel, endViewmodel, project, state, shadowOk, uploadTextures };
 }
 
 const norm3 = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };

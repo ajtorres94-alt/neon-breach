@@ -98,15 +98,15 @@ export function genDisc(seg = 20) {
  * A box face is a lattice; every lattice point is pushed onto the sphere-swept surface (Minkowski sum of the
  * inner box and a sphere), which gives smooth bevels with correct normals. maxCell subdivides long flat faces.
  */
-export function genRBox(hx, hy, hz, r, maxCell = Infinity) {
+export function genRBox(hx, hy, hz, r, maxCell = Infinity, coarse = false) {
   const h = [hx, hy, hz];
   r = Math.max(0.002, Math.min(r, Math.min(hx, hy, hz) * 0.98));
   const inner = h.map(v => v - r);
   const samples = (hh) => {
-    const ih = hh - r, s = [-hh, -hh + r * 0.35, -hh + r * 0.7, -ih];
+    const ih = hh - r, s = coarse ? [-hh, -hh + r * 0.45, -ih] : [-hh, -hh + r * 0.35, -hh + r * 0.7, -ih];
     const span = ih * 2, n = Math.max(1, Math.ceil(span / maxCell));
     for (let i = 1; i < n; i++) s.push(-ih + span * i / n);
-    s.push(ih, hh - r * 0.7, hh - r * 0.35, hh);
+    if (coarse) s.push(ih, hh - r * 0.45, hh); else s.push(ih, hh - r * 0.7, hh - r * 0.35, hh);
     return s.filter((v, i, a) => i === 0 || v > a[i - 1] + 1e-6);
   };
   const S = h.map(samples), b = new Builder();
@@ -121,6 +121,36 @@ export function genRBox(hx, hy, hz, r, maxCell = Infinity) {
       row.push(V([q[0] + n[0] * r, q[1] + n[1] * r, q[2] + n[2] * r], n, [(sb[i] / h[bx]) * 0.5 + 0.5, (sc[j] / h[cx]) * 0.5 + 0.5]));
     } pts.push(row); }
     for (let j = 0; j < sc.length - 1; j++) for (let i = 0; i < sb.length - 1; i++) b.quad(pts[j][i], pts[j][i + 1], pts[j + 1][i + 1], pts[j + 1][i]);
+  }
+  return b.done();
+}
+
+/**
+ * Smooth lofted solid along Y: sections = [{ y, rx, rz, cx = 0, cz = 0 }, ...] (elliptical rings, bottom to top).
+ * Used for torsos, heads, limbs and helmets. Ends are capped when the end ring has a real radius.
+ */
+export function genLoft(sections, seg = 18) {
+  const n = sections.length, b = new Builder(), P = [];
+  let total = 0; const accum = [0];
+  for (let j = 1; j < n; j++) { total += Math.abs(sections[j].y - sections[j - 1].y) + 1e-6; accum.push(total); }
+  for (let j = 0; j < n; j++) {
+    const s = sections[j], row = [];
+    for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2; row.push([(s.cx || 0) + Math.cos(a) * s.rx, s.y, (s.cz || 0) + Math.sin(a) * s.rz]); }
+    P.push(row);
+  }
+  const N = (j, i) => {
+    const i0 = (i - 1 + seg) % seg, i1 = (i + 1) % seg, j0 = Math.max(0, j - 1), j1 = Math.min(n - 1, j + 1);
+    const du = [P[j][i1][0] - P[j][i0][0], P[j][i1][1] - P[j][i0][1], P[j][i1][2] - P[j][i0][2]];
+    const dv = [P[j1][i][0] - P[j0][i][0], P[j1][i][1] - P[j0][i][1], P[j1][i][2] - P[j0][i][2]];
+    const nx = dv[1] * du[2] - dv[2] * du[1], ny = dv[2] * du[0] - dv[0] * du[2], nz = dv[0] * du[1] - dv[1] * du[0], l = Math.hypot(nx, ny, nz);
+    if (l < 1e-9) return [0, j === 0 ? -1 : 1, 0];
+    return [nx / l, ny / l, nz / l];
+  };
+  const vert = (j, i) => V(P[j][i], N(j, i), [i / seg, accum[j] / total]);
+  for (let j = 0; j < n - 1; j++) for (let i = 0; i < seg; i++) b.quad(vert(j, i), vert(j, i + 1), vert(j + 1, i + 1), vert(j + 1, i));
+  for (const [j, ny] of [[0, -1], [n - 1, 1]]) {
+    const s = sections[j]; if (s.rx < 0.002 || s.rz < 0.002) continue;
+    for (let i = 0; i < seg; i++) b.tri(V([s.cx || 0, s.y, s.cz || 0], [0, ny, 0], [0.5, 0.5]), V(P[j][i], [0, ny, 0], [0.5, 0.5]), V(P[j][i + 1], [0, ny, 0], [0.5, 0.5]));
   }
   return b.done();
 }

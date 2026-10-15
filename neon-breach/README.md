@@ -77,3 +77,8 @@ Everything visual is generated in code, so there are no image or model files to 
 - `client/gl.js` renders with a baked sun shadow map, hemisphere lighting, specular on metal, fog and a cloudy sky. Characters get soft contact shadows. Low quality turns shadow filtering down.
 
 Collision, hitboxes and bot navigation still use the simple box layout, so the visuals can change without touching gameplay.
+
+The art style is a stylised, Team Fortress-like look: painterly softened textures, chamfered architecture, a soft-ramp sun with cool shadows and richer colour, rim light, and cartoon outlines on characters, pickups and projectiles. Characters have big heads with faces, chunky limbs, big boots and gloves, and one of six hats per operator (balaclava, hard hat, helmet, cap, beanie, headset). In team modes the shirt takes the team colour.
+
+Set dressing lives in `client/clutter.js`: per-map debris, tyres, cones, pallets, papers, plants and puddles on the floor, plus posters, vents, lamps, banners and extinguishers on walls. It is deterministic, visual only, and never placed on pickups, spawns or inside solid objects. It also adds floor markings (manholes, drains, cracks, hazard stripes, parking lines, patches) and architectural trim (baseboards, cornices, pilasters). Weapon models (first person and third person) are defined once in `client/guns.js`, each shaped after its real-world counterpart (AK, M4, AUG, MP5, P90, Mossberg 500, SPAS-12, Desert Eagle, Python, RPG-7, bolt-action sniper...). Soldiers are drawn by `client/avatar.js`: lofted bodies with IK limbs, camo uniforms, plate carriers, helmets/headgear, gloves and boots, with team colour on the armband, chest strip and helmet band.
+
