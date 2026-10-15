@@ -82,3 +82,7 @@ The art style is a stylised, Team Fortress-like look: painterly softened texture
 
 Set dressing lives in `client/clutter.js`: per-map debris, tyres, cones, pallets, papers, plants and puddles on the floor, plus posters, vents, lamps, banners and extinguishers on walls. It is deterministic, visual only, and never placed on pickups, spawns or inside solid objects. It also adds floor markings (manholes, drains, cracks, hazard stripes, parking lines, patches) and architectural trim (baseboards, cornices, pilasters). Weapon models (first person and third person) are defined once in `client/guns.js`, each shaped after its real-world counterpart (AK, M4, AUG, MP5, P90, Mossberg 500, SPAS-12, Desert Eagle, Python, RPG-7, bolt-action sniper...). Soldiers are drawn by `client/avatar.js`: lofted bodies with IK limbs, camo uniforms, plate carriers, helmets/headgear, gloves and boots, with team colour on the armband, chest strip and helmet band.
 
+
+
+### Audio
+`client/audio.js` synthesises everything (no asset files): layered gunshots (supersonic crack, blast body, sub thump, reverberant tail) through a soft-clip punch stage, metallic reload and bolt foley, convolution reverb, weighty footsteps/impacts/explosions, and a cinematic score (string pads, brass swells, timpani/taiko, low ostinato in matches). Sound volumes are in Settings.

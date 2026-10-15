@@ -657,7 +657,7 @@ function computeCamera(dt, t) {
   if (!settings.access.reduceShake && b.grounded) { const sp = Math.min(1, Math.hypot(b.vx, b.vz) / 6.4); bobY = Math.sin(S.bob * 2) * 0.025 * sp; bobX = Math.cos(S.bob) * 0.012 * sp; }
   const sh = settings.access.reduceShake ? 0 : S.shake;
   const jx = (Math.random() - 0.5) * 0.02 * sh, jy = (Math.random() - 0.5) * 0.02 * sh;
-  return { x: e[0] + Math.cos(S.yaw) * bobX, y: e[1] + bobY - S.landDip, z: e[2] - Math.sin(S.yaw) * bobX, yaw: S.yaw + jx, pitch: S.pitch + jy, roll: S.leanVis * 0.13, fov };
+  return { x: e[0] + Math.cos(S.yaw) * bobX, y: e[1] + bobY - S.landDip, z: e[2] - Math.sin(S.yaw) * bobX, yaw: S.yaw + jx, pitch: S.pitch + jy, roll: -S.leanVis * 0.13, fov };
 }
 
 // ------------------------------------------------------------------ rendering

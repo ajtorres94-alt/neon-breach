@@ -8,9 +8,9 @@ import { scatterClutter } from './clutter.js';
 
 const CELL = 1.6;                                   // max face-grid cell (metres): AO and texture detail resolution
 const AO_R = 1.9, AO_STRENGTH = 0.62;
-const ROUNDED = { hedge: 0.32, sand: 0.2, rock: 0.5, leaf: 0.4, crate: 0.09, hay: 0.25,
-  // chamfered edges on architecture so nothing reads as a hard-edged cube
-  wall: 0.07, concrete: 0.08, metal: 0.07, stone: 0.08, marble: 0.07, brick: 0.07, wood: 0.06, rust: 0.09, olive: 0.09, blue: 0.09, red: 0.09, dark: 0.06, accent: 0.05, dirt: 0.12 };
+const ROUNDED = { hedge: 0.22, sand: 0.1, rock: 0.3, leaf: 0.25, crate: 0.022, hay: 0.1,
+  // only a hair of edge bevel on architecture and props, enough to catch a highlight but still read as hard-edged
+  wall: 0.02, concrete: 0.025, metal: 0.018, stone: 0.025, marble: 0.02, brick: 0.02, wood: 0.018, rust: 0.025, olive: 0.025, blue: 0.025, red: 0.025, dark: 0.018, accent: 0.015, dirt: 0.06 };
 
 // ---------------------------------------------------------------- shared unit meshes
 let UNIT = null;

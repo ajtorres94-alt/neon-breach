@@ -166,7 +166,7 @@ export function drawGun(R, gun, o) {
       const col = colOf(p.c, accent, gold), em = emitOf(p.c, gold), sp = specOf(p.c, gold);
       if (p.k === 't') { const e0 = pos(p.x0, p.y0, p.z0), e1 = pos(p.x1, p.y1, p.z1); R.tube(e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], p.r, p.r1, col, sp, em); }
       else if (p.k === 'e') { const c = pos(p.x, p.y, p.z); R.sphere(c[0], c[1], c[2], p.rx, p.ry, p.rz, col, em, 1, sp, yaw, pitch); }
-      else { const c = pos(p.x, p.y, p.z); R.rbox(c[0], c[1], c[2], p.sx, p.sy, p.sz, yaw, pitch + p.pt, col, p.r ?? Math.min(p.sx, p.sy, p.sz) * 0.3, em, 1, sp, p.rl); }
+      else { const c = pos(p.x, p.y, p.z); R.rbox(c[0], c[1], c[2], p.sx, p.sy, p.sz, yaw, pitch + p.pt, col, Math.min((p.r ?? 0.01) * 0.4, 0.006), em, 1, sp, p.rl); }
     }
   }
   R.texture('plain');
