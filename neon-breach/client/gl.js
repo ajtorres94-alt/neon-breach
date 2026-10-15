@@ -51,6 +51,9 @@ export const MATERIALS = {
   concrete: [0.55, 0.55, 0.53], olive: [0.30, 0.36, 0.22], blue: [0.18, 0.31, 0.50], red: [0.58, 0.19, 0.16], dirt: [0.40, 0.31, 0.21], leaf: [0.17, 0.36, 0.13],
 };
 
+// strength of the shader micro-relief per map material
+const MICRO = { rock: 0.7, hedge: 0.6, leaf: 0.6, wood: 0.55, grass: 0.4, dirt: 0.55, sand: 0.45, stone: 0.4, brick: 0.35, concrete: 0.4, marble: 0.2, wall: 0.3, metal: 0.25, rust: 0.4, crate: 0.3, floor: 0.2, asphalt: 0.5, plain: 0.3, hay: 0.5 };
+
 const VS = `
 attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol; attribute vec2 aUV;
 uniform mat4 uVP; uniform mat4 uModel; uniform mat3 uRot; uniform vec3 uInvS; uniform mat4 uLightVP; uniform float uUVMul; uniform float uOutline; uniform vec3 uCam;
@@ -76,7 +79,18 @@ uniform vec3 uFog; uniform vec2 uFogRange; uniform vec3 uCam; uniform float uFog
 uniform float uBright; uniform float uLight; uniform float uFlash;
 #define NL 8
 uniform vec4 uLP[NL]; uniform vec3 uLC[NL]; uniform vec4 uLD[NL];   // dynamic lights: pos+radius, colour*intensity, spot dir+cone (cone<-1 = point)
+uniform float uMicro;
 uniform float uShadowOn; uniform float uShadowTexel; uniform float uShadowQ; uniform float uRim; uniform float uOutlineOn;
+float h3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+// value noise with analytic gradient: x = noise, yzw = d/dp
+vec4 vnoise3(vec3 x){
+  vec3 i = floor(x), f = fract(x), u = f * f * (3.0 - 2.0 * f), du = 6.0 * f * (1.0 - f);
+  float a = h3(i), b = h3(i + vec3(1.0,0.0,0.0)), c = h3(i + vec3(0.0,1.0,0.0)), d = h3(i + vec3(1.0,1.0,0.0));
+  float e = h3(i + vec3(0.0,0.0,1.0)), f2 = h3(i + vec3(1.0,0.0,1.0)), g = h3(i + vec3(0.0,1.0,1.0)), h = h3(i + vec3(1.0,1.0,1.0));
+  float k1 = b - a, k2 = c - a, k3 = e - a, k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f2, k7 = -a + b + c - d + e - f2 - g + h;
+  return vec4(a + k1*u.x + k2*u.y + k3*u.z + k4*u.x*u.y + k5*u.y*u.z + k6*u.z*u.x + k7*u.x*u.y*u.z,
+              du * vec3(k1 + k4*u.y + k6*u.z + k7*u.y*u.z, k2 + k5*u.z + k4*u.x + k7*u.z*u.x, k3 + k6*u.x + k5*u.y + k7*u.x*u.y));
+}
 float unpackD(vec4 c){ return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
 float shadowAt(float ndl){
   vec3 p = vLP.xyz / vLP.w * 0.5 + 0.5;
@@ -98,6 +112,15 @@ void main(){
   }
   vec3 n = normalize(vNor);
   vec3 base = texture2D(uTex, vUV).rgb * mix(vCol, uTint, uUseTint);
+  if (uMicro > 0.0) {                                   // procedural micro-relief in world space: three octaves of gradient noise bend the normal and mottle the albedo
+    float fadeM = 1.0 - smoothstep(14.0, 40.0, length(uCam - vWorld));
+    if (fadeM > 0.0) {
+      vec4 m1 = vnoise3(vWorld * 7.0), m2 = vnoise3(vWorld * 23.0 + 3.1), m3 = vnoise3(vWorld * 61.0 + 7.7);
+      vec3 gr = m1.yzw * 0.5 + m2.yzw * 0.3 + m3.yzw * 0.2;
+      n = normalize(n - (gr - n * dot(gr, n)) * 0.5 * uMicro * fadeM);
+      base *= 1.0 + ((m1.x * 0.5 + m2.x * 0.3 + m3.x * 0.2) - 0.5) * 0.5 * uMicro * fadeM;
+    }
+  }
   vec3 L = normalize(uSun);
   float ndl = max(dot(n, L), 0.0);
   float sh = uShadowOn > 0.5 ? shadowAt(ndl) : 1.0;
@@ -399,10 +422,10 @@ export function createRenderer(canvas, opts = {}) {
     setCommon(dim);
     for (const g of state.groups) {
       if (g.noShadow && state.hideCeil) continue;
-      setTex(g.tex || g.mat); gl.uniform1f(U.uEmit, g.emit);
+      setTex(g.tex || g.mat); gl.uniform1f(U.uEmit, g.emit); gl.uniform1f(U.uMicro, g.emit ? 0 : (MICRO[g.mat] ?? 0.2));
       bindMesh(g); gl.drawArrays(gl.TRIANGLES, 0, g.count);
     }
-    gl.uniform1f(U.uEmit, 0);
+    gl.uniform1f(U.uMicro, 0); gl.uniform1f(U.uEmit, 0);
     setTex('plain'); boundMesh = null;
   }
 

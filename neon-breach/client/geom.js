@@ -13,12 +13,12 @@ class Builder {
     const nx = a.n[0] + b.n[0] + c.n[0], ny = a.n[1] + b.n[1] + c.n[1], nz = a.n[2] + b.n[2] + c.n[2];
     if (gx * gx + gy * gy + gz * gz < 1e-14) return;                       // degenerate
     const t = gx * nx + gy * ny + gz * nz >= 0 ? [a, b, c] : [a, c, b];
-    for (const q of t) this.v.push(q.p[0], q.p[1], q.p[2], q.n[0], q.n[1], q.n[2], 1, 1, 1, q.uv[0], q.uv[1]);
+    for (const q of t) this.v.push(q.p[0], q.p[1], q.p[2], q.n[0], q.n[1], q.n[2], q.c ? q.c[0] : 1, q.c ? q.c[1] : 1, q.c ? q.c[2] : 1, q.uv[0], q.uv[1]);
   }
   quad(a, b, c, d) { this.tri(a, b, c); this.tri(a, c, d); }
   done() { return new Float32Array(this.v); }
 }
-const V = (p, n, uv = [0, 0]) => ({ p, n, uv });
+const V = (p, n, uv = [0, 0], c = null) => ({ p, n, uv, c });
 const norm = (x, y, z) => { const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
 
 /** Surface of revolution / parametric grid: fn(i/nu, j/nv) -> {p,n,uv}. */
@@ -190,6 +190,82 @@ export function appendMesh(out, mesh, pos, R, scale, tint, uvMul = 1) {
       const NX = R[0] * nx + R[3] * ny + R[6] * nz, NY = R[1] * nx + R[4] * ny + R[7] * nz, NZ = R[2] * nx + R[5] * ny + R[8] * nz; nx = NX; ny = NY; nz = NZ;
     }
     const nl = Math.hypot(nx, ny, nz) || 1;
-    out.push(x + pos[0], y + pos[1], z + pos[2], nx / nl, ny / nl, nz / nl, tint[0], tint[1], tint[2], mesh[i + 9] * uvMul, mesh[i + 10] * uvMul);
+    out.push(x + pos[0], y + pos[1], z + pos[2], nx / nl, ny / nl, nz / nl, tint[0] * mesh[i + 6], tint[1] * mesh[i + 7], tint[2] * mesh[i + 8], mesh[i + 9] * uvMul, mesh[i + 10] * uvMul);
   }
+}
+
+
+// ---------------------------------------------------------------- organic shapes
+const hash3 = (x, y, z, s) => { const v = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + s * 19.19) * 43758.5453; return v - Math.floor(v); };
+/** Smooth value noise in 0..1. */
+export function noise3(x, y, z, s = 0) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+  const L = (a, b, t) => a + (b - a) * t, h = (i, j, k) => hash3(xi + i, yi + j, zi + k, s);
+  return L(L(L(h(0, 0, 0), h(1, 0, 0), u), L(h(0, 1, 0), h(1, 1, 0), u), v), L(L(h(0, 0, 1), h(1, 0, 1), u), L(h(0, 1, 1), h(1, 1, 1), u), v), w);
+}
+export const fbm3 = (x, y, z, s = 0) => 0.58 * noise3(x, y, z, s) + 0.29 * noise3(x * 2.1, y * 2.1, z * 2.1, s + 1) + 0.13 * noise3(x * 4.3, y * 4.3, z * 4.3, s + 2);
+
+/**
+ * Lumpy solid for boulders, hedges, canopies and dunes: a super-ellipsoid (e < 1 is squarer, 1 is an ellipsoid) with noise carved INWARD (so it always
+ * stays inside its half-extents hx, hy, hz, which are the collision box) and an optional taper towards the top. Smooth normals from the lattice.
+ */
+export function genBlob(hx, hy, hz, o = {}) {
+  const { e = 0.7, amp = 0.2, f = 1, taper = 0, seg = 22, rings = 14, seed = 0, uvs = 1 } = o;
+  const sp = (v, p) => Math.sign(v) * Math.pow(Math.abs(v), p);
+  const P = [];
+  for (let j = 0; j <= rings; j++) {
+    const th = -Math.PI / 2 + Math.PI * j / rings, ct = Math.cos(th), st = Math.sin(th), row = [];
+    for (let i = 0; i <= seg; i++) {
+      const ph = i / seg * Math.PI * 2;
+      let x = hx * sp(ct, e) * sp(Math.cos(ph), e), y = hy * sp(st, e), z = hz * sp(ct, e) * sp(Math.sin(ph), e);
+      const k = 1 - amp * fbm3(x * f, y * f, z * f, seed); x *= k; y *= k; z *= k;
+      if (taper && y > 0) { const t = 1 - taper * Math.pow(y / hy, 2); x *= t; z *= t; }
+      row.push([x, y, z]);
+    }
+    P.push(row);
+  }
+  const b = new Builder(), N = [];
+  for (let j = 0; j <= rings; j++) {
+    const row = [];
+    for (let i = 0; i <= seg; i++) {
+      if (j === 0 || j === rings) { row.push([0, j === 0 ? -1 : 1, 0]); continue; }
+      const a = P[j][i === seg ? 1 : i + 1], c = P[j][i === 0 ? seg - 1 : i - 1], d = P[j + 1][i], e2 = P[j - 1][i];
+      const tu = [a[0] - c[0], a[1] - c[1], a[2] - c[2]], tv = [d[0] - e2[0], d[1] - e2[1], d[2] - e2[2]];
+      let n = [tu[1] * tv[2] - tu[2] * tv[1], tu[2] * tv[0] - tu[0] * tv[2], tu[0] * tv[1] - tu[1] * tv[0]];
+      const p = P[j][i]; if (n[0] * p[0] + n[1] * p[1] + n[2] * p[2] < 0) n = [-n[0], -n[1], -n[2]];
+      row.push(norm(n[0], n[1], n[2]));
+    }
+    N.push(row);
+  }
+  for (let j = 0; j < rings; j++) for (let i = 0; i < seg; i++) {
+    const mk = (jj, ii) => V(P[jj][ii], N[jj][ii], [ii / seg * (hx + hz) * 1.57 * uvs, jj / rings * hy * 3.14 * uvs]);
+    b.quad(mk(j, i), mk(j, i + 1), mk(j + 1, i + 1), mk(j + 1, i));
+  }
+  return b.done();
+}
+
+
+/**
+ * Smooth surface from a lattice of points. P[j][i] positions (i wraps when `wrap`), C optional colours, UV optional function (i, j, p, n) -> [u, v].
+ * Normals come from central differences on the lattice, so dense lattices give smooth, high-resolution shading. `cap0`/`cap1` close the ends.
+ */
+export function genLattice(P, o = {}) {
+  const { C = null, uv = null, wrap = true, flip = false } = o;
+  const nj = P.length - 1, ni = P[0].length - 1, b = new Builder(), N = [];
+  for (let j = 0; j <= nj; j++) {
+    const row = [];
+    for (let i = 0; i <= ni; i++) {
+      const ia = wrap ? (i === ni ? 1 : i + 1) : Math.min(i + 1, ni), ic = wrap ? (i === 0 ? ni - 1 : i - 1) : Math.max(i - 1, 0);
+      const a = P[j][ia], c = P[j][ic], d = P[Math.min(j + 1, nj)][i], e = P[Math.max(j - 1, 0)][i];
+      const tu = [a[0] - c[0], a[1] - c[1], a[2] - c[2]], tv = [d[0] - e[0], d[1] - e[1], d[2] - e[2]];
+      let n = [tu[1] * tv[2] - tu[2] * tv[1], tu[2] * tv[0] - tu[0] * tv[2], tu[0] * tv[1] - tu[1] * tv[0]];
+      if (flip) n = [-n[0], -n[1], -n[2]];
+      row.push(norm(n[0], n[1], n[2]));
+    }
+    N.push(row);
+  }
+  const mk = (j, i) => V(P[j][i], N[j][i], uv ? uv(i, j, P[j][i], N[j][i]) : [i / ni, j / nj], C ? C[j][i] : null);
+  for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) b.quad(mk(j, i), mk(j, i + 1), mk(j + 1, i + 1), mk(j + 1, i));
+  return b.done();
 }

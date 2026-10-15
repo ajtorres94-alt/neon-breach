@@ -4,16 +4,16 @@ export const WEAPONS = {
   // ---- sidearms
   pistol:   { id: 'pistol',   name: 'PP9 PISTOL',      cat: 'side', dmg: 24,  rate: 5.5, auto: false, mag: 12, reserve: Infinity, reload: 1.1,
               spread: 0.016, adsSpread: 0.003, pellets: 1, range: 90,  zoom: 1.2,  recoil: 0.010, hs: 1.8, color: '#9aa4b2' },
-  revolver: { id: 'revolver', name: 'R-6 REVOLVER',    cat: 'side', dmg: 51,  rate: 2.0, auto: false, mag: 6,  reserve: 24, reload: 2.2, pierce: true, nofall: true,
+  revolver: { id: 'revolver', name: 'R-6 REVOLVER',    cat: 'side', dmg: 51,  rate: 2.0, auto: false, mag: 6,  reserve: 24, reload: 2.0, pierce: true, nofall: true,
               spread: 0.010, adsSpread: 0.0015, pellets: 1, range: 110, zoom: 1.25, recoil: 0.030, hs: 1.4, color: '#e3c58a' },
-  deagle:   { id: 'deagle',   name: 'DE-7 HAND CANNON', cat: 'side', dmg: 101, rate: 1.6, auto: false, mag: 7,  reserve: 21, reload: 2.3, pierce: true, nofall: true,
+  deagle:   { id: 'deagle',   name: 'DE-7 HAND CANNON', cat: 'side', dmg: 101, rate: 1.6, auto: false, mag: 7,  reserve: 21, reload: 2.0, pierce: true, nofall: true,
               spread: 0.012, adsSpread: 0.002, pellets: 1, range: 100, zoom: 1.25, recoil: 0.050, hs: 1.0, color: '#d8dde6' },
   // ---- SMGs
   smg:      { id: 'smg',      name: 'VX SMG',          cat: 'smg', dmg: 13, rate: 13,   auto: true,  mag: 32, reserve: 128, reload: 1.5,
               spread: 0.034, adsSpread: 0.012, pellets: 1, range: 70,  zoom: 1.3,  recoil: 0.007, hs: 1.7, color: '#6fd3ff' },
   mp5:      { id: 'mp5',      name: 'MK-5 SMG',        cat: 'smg', dmg: 15, rate: 11.5, auto: true,  mag: 30, reserve: 120, reload: 1.6,
               spread: 0.026, adsSpread: 0.007, pellets: 1, range: 75,  zoom: 1.4,  recoil: 0.0065, hs: 1.7, color: '#8fb3ff' },
-  p90:      { id: 'p90',      name: 'PD-90 PDW',       cat: 'smg', dmg: 11, rate: 16,   auto: true,  mag: 50, reserve: 150, reload: 2.3,
+  p90:      { id: 'p90',      name: 'PD-90 PDW',       cat: 'smg', dmg: 11, rate: 16,   auto: true,  mag: 50, reserve: 150, reload: 2.0,
               spread: 0.040, adsSpread: 0.012, pellets: 1, range: 65,  zoom: 1.35, recoil: 0.0055, hs: 1.7, color: '#a0ffd8' },
   // ---- assault rifles
   rifle:    { id: 'rifle',    name: 'KR-7 RIFLE',      cat: 'rifle', dmg: 22, rate: 8.5, auto: true, mag: 30, reserve: 120, reload: 1.8,
@@ -23,19 +23,19 @@ export const WEAPONS = {
   m4:       { id: 'm4',       name: 'CR-4 CARBINE',    cat: 'rifle', dmg: 24, rate: 10.5, auto: true, mag: 30, reserve: 120, reload: 1.7,
               spread: 0.022, adsSpread: 0.0045, pellets: 1, range: 105, zoom: 1.6, recoil: 0.011, hs: 1.8, color: '#6fe0a0' },
   // ---- shotguns
-  shotgun:  { id: 'shotgun',  name: 'BREACHER',        cat: 'shotgun', dmg: 12, rate: 1.3, auto: false, mag: 6, reserve: 30, reload: 2.2,
+  shotgun:  { id: 'shotgun',  name: 'BREACHER',        cat: 'shotgun', dmg: 12, rate: 1.3, auto: false, mag: 6, reserve: 30, reload: 2.0,
               spread: 0.075, adsSpread: 0.055, pellets: 10, range: 40, zoom: 1.15, recoil: 0.040, hs: 1.5, color: '#ffb35c' },
-  mossberg: { id: 'mossberg', name: 'RANGER PUMP',     cat: 'shotgun', dmg: 14, rate: 1.0, auto: false, mag: 8, reserve: 32, reload: 3.0,
+  mossberg: { id: 'mossberg', name: 'RANGER PUMP',     cat: 'shotgun', dmg: 14, rate: 1.0, auto: false, mag: 8, reserve: 32, reload: 2.0,
               spread: 0.060, adsSpread: 0.042, pellets: 8, range: 38, zoom: 1.15, recoil: 0.045, hs: 1.5, color: '#d39a5a' },
-  spas:     { id: 'spas',     name: 'SPARTAN 12',      cat: 'shotgun', dmg: 11, rate: 2.2, auto: false, mag: 8, reserve: 32, reload: 3.0,
+  spas:     { id: 'spas',     name: 'SPARTAN 12',      cat: 'shotgun', dmg: 11, rate: 2.2, auto: false, mag: 8, reserve: 32, reload: 2.0,
               spread: 0.085, adsSpread: 0.060, pellets: 8, range: 32, zoom: 1.15, recoil: 0.030, hs: 1.5, color: '#e0b080' },
   // ---- heavy
-  sniper:   { id: 'sniper',   name: 'LONGSHOT',        cat: 'heavy', dmg: 95, rate: 0.9, auto: false, mag: 5, reserve: 20, reload: 2.4, nofall: true,
+  sniper:   { id: 'sniper',   name: 'LONGSHOT',        cat: 'heavy', dmg: 95, rate: 0.9, auto: false, mag: 5, reserve: 20, reload: 2.0, nofall: true,
               spread: 0.045, adsSpread: 0.0, pellets: 1, range: 220, zoom: 4.0, recoil: 0.045, hs: 1.6, color: '#d68cff' },
   launcher: { id: 'launcher', name: 'RL-7 LAUNCHER',   cat: 'heavy', kind: 'rocket', dmg: 150, minDmg: 20, radius: 5.5, speed: 38,
-              rate: 0.5, auto: false, mag: 1, reserve: 3, reload: 3.0, spread: 0, adsSpread: 0, pellets: 1, range: 200, zoom: 1.3, recoil: 0.05, hs: 1, color: '#ff6b4a' },
+              rate: 0.5, auto: false, mag: 1, reserve: 3, reload: 2.0, spread: 0, adsSpread: 0, pellets: 1, range: 200, zoom: 1.3, recoil: 0.05, hs: 1, color: '#ff6b4a' },
   // ---- mode weapon
-  golden:   { id: 'golden',   name: 'GOLDEN GUN',      cat: 'gold', dmg: 999, rate: 2.2, auto: false, mag: 1, reserve: Infinity, reload: 0.7, nofall: true,
+  golden:   { id: 'golden',   name: 'GOLDEN GUN',      cat: 'gold', dmg: 999, rate: 2.2, auto: false, mag: 1, reserve: Infinity, reload: 1.0, nofall: true,
               spread: 0.014, adsSpread: 0.002, pellets: 1, range: 120, zoom: 1.4, recoil: 0.020, hs: 1.0, color: '#ffd23f' },
 };
 

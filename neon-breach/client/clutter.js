@@ -2,6 +2,7 @@
 // posters, vents, lamps and extinguishers on walls. Purely visual (no collision) and deterministic per map.
 // Every piece is placed away from solid boxes, pickups and spawn points so it never hides anything that matters.
 import * as G from './geom.js';
+import { rockVariant, bushClump, trunkMesh } from './organic.js';
 
 // kind -> [count] per map. Floor items are low; wall items are listed separately.
 const PROFILES = {
@@ -177,8 +178,13 @@ export function scatterClutter(map, H) {
     hayS(x, z, y) { for (let i = 0; i < 5; i++) put('hay', LO, [x + rr(-0.3, 0.3), y + 0.05, z + rr(-0.3, 0.3)], yawR(r() * 6.28), [rr(0.15, 0.3), 0.07, rr(0.1, 0.2)], [1, 1, 1], 1.5); },
     tuft(x, z, y) {
       const g = pick(r, [[0.2, 0.42, 0.14], [0.28, 0.5, 0.17], [0.36, 0.52, 0.2], [0.3, 0.4, 0.15]]);
-      const n = 5 + Math.floor(r() * 4);
-      for (let i = 0; i < n; i++) { const a = r() * 6.28, h = rr(0.2, 0.5), lean = rr(0.1, 0.45); put('plain', frustum(0.003, 0.028, 4), [x + Math.cos(a) * 0.05, y + h / 2, z + Math.sin(a) * 0.05], dirR(Math.cos(a) * lean, 1, Math.sin(a) * lean), [1, h, 1], g.map(c => c * rr(0.85, 1.15))); }
+      const n = 8 + Math.floor(r() * 6);
+      for (let i = 0; i < n; i++) {                                                  // each blade bends over in two segments and tapers to a point
+        const a = r() * 6.28, h = rr(0.18, 0.5), lean = rr(0.15, 0.6), bx = x + Math.cos(a) * rr(0, 0.07), bz = z + Math.sin(a) * rr(0, 0.07), tint = g.map(c => c * rr(0.82, 1.15));
+        const m1 = [bx + Math.cos(a) * lean * h * 0.25, y + h * 0.55, bz + Math.sin(a) * lean * h * 0.25], m2 = [m1[0] + Math.cos(a) * lean * h * 0.55, y + h * 0.95, m1[2] + Math.sin(a) * lean * h * 0.55];
+        put('plain', frustum(0.012, 0.03, 4), [(bx + m1[0]) / 2, (y + m1[1]) / 2, (bz + m1[2]) / 2], dirR(m1[0] - bx, m1[1] - y, m1[2] - bz), [1, Math.hypot(m1[0] - bx, m1[1] - y, m1[2] - bz), 1], tint);
+        put('plain', frustum(0.002, 0.012, 4), [(m1[0] + m2[0]) / 2, (m1[1] + m2[1]) / 2, (m1[2] + m2[2]) / 2], dirR(m2[0] - m1[0], m2[1] - m1[1], m2[2] - m1[2]), [1, Math.hypot(m2[0] - m1[0], m2[1] - m1[1], m2[2] - m1[2]), 1], tint);
+      }
     },
     flower(x, z, y) {
       const t = pick(r, TINTS.flower), n = 1 + Math.floor(r() * 3);
@@ -191,17 +197,18 @@ export function scatterClutter(map, H) {
     },
     leaf(x, z, y) { for (let i = 0; i < 4; i++) put('plain', U.cyl, [x + rr(-0.3, 0.3), y + 0.004 + i * 0.001, z + rr(-0.3, 0.3)], null, [rr(0.05, 0.09), 0.004, rr(0.03, 0.06)], pick(r, [[0.5, 0.4, 0.15], [0.6, 0.3, 0.12], [0.35, 0.45, 0.15], [0.65, 0.5, 0.15]])); },
     rock(x, z, y) {
-      const s = rr(0.12, 0.34);
-      put('rock', U.sphere, [x, y + s * 0.4, z], yawR(r() * 6.28, r() * 0.5, r() * 0.5), [s * rr(1, 1.5), s * 0.75, s * rr(0.9, 1.3)], [1, 1, 1], 1);
-      if (r() < 0.6) put('rock', U.sphere, [x + s * 1.1, y + s * 0.2, z + s * 0.3], yawR(r() * 6.28), [s * 0.5, s * 0.35, s * 0.45], [0.95, 0.95, 0.95], 1);
+      const s = rr(0.12, 0.34), v = Math.floor(r() * 6);
+      put('rock', rockVariant(v, 26, 18), [x, y + s * 0.34, z], yawR(r() * 6.28, (r() - 0.5) * 0.3, (r() - 0.5) * 0.3), [s * rr(1, 1.4), s * rr(0.7, 0.95), s * rr(0.9, 1.25)], [1, 1, 1], 1);
+      if (r() < 0.6) put('rock', rockVariant((v + 3) % 6, 20, 14), [x + s * 1.1, y + s * 0.15, z + s * 0.3], yawR(r() * 6.28), [s * 0.5, s * 0.34, s * 0.45], [0.95, 0.95, 0.95], 1);
     },
     bush(x, z, y) {
       const s = rr(0.35, 0.6);
-      for (let i = 0; i < 3; i++) put('leaf', U.sphere, [x + rr(-0.3, 0.3), y + s * 0.5, z + rr(-0.3, 0.3)], yawR(r() * 6.28), [s * rr(0.8, 1.1), s * 0.7, s * rr(0.8, 1.1)], [0.8 + r() * 0.2, 0.95, 0.8], 2);
+      for (let i = 0; i < 6; i++) { const a = r() * 6.28, d = rr(0, 0.34) * s * 1.6; put('leaf', bushClump(Math.floor(r() * 4), 12, 9), [x + Math.cos(a) * d, y + s * rr(0.28, 0.6), z + Math.sin(a) * d], yawR(r() * 6.28), [s * rr(0.5, 0.8), s * rr(0.4, 0.6), s * rr(0.5, 0.8)], [0.78 + r() * 0.24, 0.95 + r() * 0.1, 0.78 + r() * 0.2], 1); }
+      for (let i = 0; i < 5; i++) { const a = r() * 6.28; put('wood', frustum(0.006, 0.016, 5), [x + Math.cos(a) * 0.08, y + 0.12, z + Math.sin(a) * 0.08], dirR(Math.cos(a) * 0.5, 1, Math.sin(a) * 0.5), [1, 0.3, 1], [0.8, 0.75, 0.7], 1); }
     },
     log(x, z, y) {
-      const len = rr(1.2, 2.2), a = r() * 6.28, rad = rr(0.12, 0.2);
-      put('wood', U.cyl, [x, y + rad * 0.9, z], dirR(Math.cos(a), rr(-0.05, 0.05), Math.sin(a)), [rad, len, rad], [0.85, 0.8, 0.75], 1);
+      const len = rr(1.2, 2.2), a = r() * 6.28, rad = rr(0.12, 0.2), v = Math.floor(r() * 100);
+      put('wood', trunkMesh(v, len, rad * 1.04, rad * 0.96, { seg: 22, rings: 14, flare: 0, lean: 0, lichen: 0.8 }), [x - Math.cos(a) * len / 2, y + rad * 0.9, z - Math.sin(a) * len / 2], dirR(Math.cos(a), rr(-0.05, 0.05), Math.sin(a)), [1, 1, 1], [0.85, 0.8, 0.75], 1);
       put('plain', U.cyl, [x + Math.cos(a) * len / 2, y + rad * 0.9, z + Math.sin(a) * len / 2], dirR(Math.cos(a), 0, Math.sin(a)), [rad * 0.96, 0.02, rad * 0.96], [0.68, 0.52, 0.32]);
     },
   };

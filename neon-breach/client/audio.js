@@ -144,6 +144,25 @@ const SOUNDS = {
     clack(t + 0.6, v, 0, 2200);
     noise('sfx', t + 0.9, 0.12, 0.3 * v, 'bandpass', 2400, 900, 0, { q: 1.5 }); clack(t + 0.98, v, 0, 2900); clack(t + 1.06, v * 0.8, 0, 1900);   // charging handle
   },
+  // reload cues, fired by the first-person reload animation (client/reload.js) at the moment each action happens
+  magout: (t, v) => { noise('sfx', t, 0.04, 0.3 * v, 'bandpass', 900, 400, 0, { q: 2 }); tone('sfx', t, 240, 120, 0.06, 0.18 * v, 'triangle'); noise('sfx', t + 0.05, 0.09, 0.14 * v, 'bandpass', 1600, 700, 0, { q: 1.2, a: 0.01 }); },
+  magin: (t, v) => { noise('sfx', t, 0.06, 0.4 * v, 'lowpass', 900, 250, 0, { a: 0.001 }); tone('sfx', t, 150, 70, 0.08, 0.42 * v, 'sine'); clack(t + 0.015, v, 0, 2300); },
+  rack: (t, v) => { noise('sfx', t, 0.1, 0.3 * v, 'bandpass', 2400, 900, 0, { q: 1.5 }); clack(t + 0.07, v, 0, 2900); clack(t + 0.14, v * 0.8, 0, 1900); },
+  cyl: (t, v) => { clack(t, v, 0, 1400); noise('sfx', t + 0.03, 0.07, 0.2 * v, 'bandpass', 1800, 900, 0, { q: 2 }); },
+  eject: (t, v) => { clack(t, v, 0, 2800); for (let i = 0; i < 4; i++) tone('sfx', t + 0.06 + i * 0.05 + Math.random() * 0.03, 3600 + Math.random() * 1500, 3200, 0.1, 0.09 * v, 'sine', 0, { a: 0.0005, send: 0.3 }); },
+  loader: (t, v) => { noise('sfx', t, 0.06, 0.28 * v, 'bandpass', 2200, 800, 0, { q: 2 }); clack(t + 0.02, v, 0, 2000); clack(t + 0.06, 0.7 * v, 0, 2600); },
+  cylclose: (t, v) => { noise('sfx', t, 0.05, 0.3 * v, 'lowpass', 1300, 300, 0, { a: 0.001 }); clack(t + 0.02, v, 0, 1500); tone('sfx', t, 190, 90, 0.07, 0.3 * v, 'sine'); },
+  shell: (t, v) => { tone('sfx', t, 1100, 700, 0.06, 0.16 * v, 'triangle', 0, { a: 0.001 }); clack(t + 0.01, 0.7 * v, 0, 1700); noise('sfx', t, 0.05, 0.1 * v, 'bandpass', 900, 500, 0, { q: 2 }); },
+  pump: (t, v) => { noise('sfx', t, 0.1, 0.3 * v, 'bandpass', 1200, 700, 0, { q: 2 }); clack(t + 0.07, v, 0, 1500); clack(t + 0.2, v, 0, 2200); tone('sfx', t + 0.2, 160, 80, 0.07, 0.25 * v, 'sine'); },
+  boltup: (t, v) => { clack(t, v, 0, 1200); noise('sfx', t + 0.02, 0.05, 0.14 * v, 'bandpass', 2000, 900, 0, { q: 2 }); },
+  boltback: (t, v) => { noise('sfx', t, 0.14, 0.24 * v, 'bandpass', 1500, 600, 0, { q: 1.5, a: 0.03 }); clack(t + 0.14, v, 0, 1800); },
+  boltfwd: (t, v) => { noise('sfx', t, 0.12, 0.24 * v, 'bandpass', 1500, 600, 0, { q: 1.5, a: 0.03 }); clack(t + 0.12, v, 0, 2000); tone('sfx', t + 0.12, 140, 70, 0.07, 0.3 * v, 'sine'); },
+  bolt: (t, v) => { clack(t, v, 0, 1500); clack(t + 0.05, 0.7 * v, 0, 2400); },
+  rocketin: (t, v) => { noise('sfx', t, 0.4, 0.22 * v, 'bandpass', 800, 400, 0, { q: 1, a: 0.12 }); tone('sfx', t + 0.38, 120, 60, 0.12, 0.4 * v, 'sine'); clack(t + 0.38, v, 0, 1200); },
+  rocketlock: (t, v) => { clack(t, v, 0, 1300); clack(t + 0.06, 0.8 * v, 0, 2100); tone('sfx', t + 0.1, 1500, 1500, 0.05, 0.08 * v, 'sine'); },
+  // other players dying: a short grunt, then the body hitting the floor
+  dieo: (t, v, p) => { const f = 0.9 + Math.random() * 0.3; noise('sfx', t, 0.32, 0.4 * v, 'bandpass', 650 * f, 280, p, { q: 2.5, a: 0.03 }); tone('sfx', t, 150 * f, 70, 0.3, 0.3 * v, 'sawtooth', p, { a: 0.02, lp: 700 }); noise('sfx', t + 0.05, 0.2, 0.12 * v, 'highpass', 2500, 1500, p, { a: 0.04 }); },
+  thud: (t, v, p) => { tone('sfx', t, 80, 36, 0.28, 0.6 * v, 'sine', p, { a: 0.002 }); noise('sfx', t, 0.16, 0.38 * v, 'lowpass', 650, 120, p, { a: 0.002, send: 0.3 }); noise('sfx', t + 0.01, 0.06, 0.15 * v, 'bandpass', 2200, 900, p, { q: 1.5 }); },
   empty: (t, v) => { clack(t, 0.8 * v, 0, 1800); tone('sfx', t, 260, 140, 0.04, 0.12 * v, 'triangle'); },
   hit: (t) => { tone('ui', t, 1800, 900, 0.05, 0.3, 'triangle', 0, { a: 0.001 }); noise('ui', t, 0.04, 0.3, 'bandpass', 3200, 1200, 0, { q: 2, a: 0.0005 }); tone('ui', t, 220, 110, 0.06, 0.3, 'sine', 0, { a: 0.001 }); },
   headshot: (t) => { tone('ui', t, 2400, 2000, 0.25, 0.25, 'sine', 0, { a: 0.001, send: 0.4 }); tone('ui', t, 3600, 3400, 0.18, 0.12, 'sine', 0, { a: 0.001 }); noise('ui', t, 0.06, 0.4, 'bandpass', 4200, 1800, 0, { q: 2, a: 0.0005 }); tone('ui', t, 200, 90, 0.1, 0.4, 'sine', 0, { a: 0.001 }); },
@@ -208,6 +227,9 @@ function playSample(name, v, p) {
   out(g, ui ? 'ui' : 'sfx', p, ui ? 0 : 0.25);
   src.start(); return true;
 }
+
+/** True when a recorded sample overrides this sound name. */
+export const hasSample = (name) => samples.has(name);
 
 /** Play a named sound. opts: {vol (0..1), pan (-1..1)} */
 export function play(name, opts = {}) {

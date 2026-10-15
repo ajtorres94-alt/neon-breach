@@ -122,3 +122,18 @@ Soldiers, clones, dogs, sentries, rats and barriers carry far more than 3000 tri
 laced and treaded boots, cargo pockets, plate-carrier pouches and webbing, fingers, watch, headset and NVG mount on soldiers; fur, jaw and teeth, harness and claws on dogs;
 gimbal, sensor head, radar dish, ammo belt and tripod joints on sentries; legs, whiskers and teeth on rats; bolts, chevrons, beacons and conduit on barriers.
 Tiny parts use low-poly spheres and scaled cubes to keep the cost down.
+
+## Reloads, iron sights, deaths and natural scenery
+
+- **Reload animations** (`client/reload.js`): every gun has a scripted 1-2 s reload (reload times were trimmed to 1.0-2.0 s). Magazine guns drop the old mag, bring a fresh one from a pouch and charge
+  (each gun has its own well position, cant, charging style: AK rock-in, MP5 slap, M4 tactical, bullpup side charge, top-fed P90); the revolver dumps spent cases and uses a speed loader;
+  shotguns feed shells one by one then pump (Ranger pumps twice); the Longshot cycles its bolt around a mag swap; the launcher takes a rocket down the tube. Sound cues fire at each action.
+- **Iron sights**: every gun gets a rear notch and front post standing clear of the receiver/optic/handguard; aiming lines the sight picture up with the eye per gun (`gun.ads`).
+- **Death animations** (`drawDead` in `client/avatar.js`): crumple forward, knocked backwards (headshots, shotguns), drop to the knees (blades), or thrown tumbling by blasts; the weapon is dropped, a blood pool spreads, other players' deaths have a grunt and a thud.
+- **Scenery**: boulders, hedges, canopies and dunes are lumpy noise-carved solids that stay inside their collision boxes; trees have root flare, surface roots, limbs and multi-lobed canopies; stone columns have plinths, rings and capitals;
+  all walls get mottling, floor dirt splash and moss on outdoor stone.
+- **Sounds**: freesound.org cannot be pulled automatically (no automated downloads, login required). Drop clips into `client/sounds/` and run `node tools/make-sound-manifest.mjs` - see `client/sounds/README.md`.
+
+## Sculpted scenery and micro-detail
+
+Trees, rocks, hedges, bushes, logs and grass are built from smooth sculpted lattices (`client/organic.js`): ridged multifractal rock with cleave planes, lumpy foliage clumps, tapered bark trunks with flare and lichen, curved grass blades. Surfaces get vertex-baked weathering (mottle, dirt splash, moss). In the shader (`client/gl.js`) a world-space gradient-noise micro-relief bends normals and mottles albedo near the camera (`MICRO` table), and organic textures bake at 512 px, unblurred, on High quality. Wildwood is roughly 520k triangles and takes a few seconds to build; lower `DETAIL.v` in `client/organic.js` if a device struggles.

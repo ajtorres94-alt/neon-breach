@@ -325,14 +325,15 @@ function bake(size, fn, bump, paintOverride) {
 }
 
 /** Returns { name: HTMLCanvasElement } for every material. `quality` shrinks the textures on slow devices. */
+const ORGANIC_TEX = new Set(['rock', 'leaf', 'hedge', 'wood', 'grass', 'dirt', 'sand', 'stone']);
 export function buildTextures(quality = 'high') {
   const base = quality === 'low' ? 128 : quality === 'medium' ? 192 : 256;
   const pot = (n) => (n >= 256 ? 256 : n >= 128 ? 128 : 64);
   const out = {};
   for (const name of Object.keys(GEN)) {
     const crisp = /^(camo|skin|gunmetal|polymer|gunwood|fabric)/.test(name);
-    const size = name === 'plain' ? 4 : name === 'fabric' ? 64 : crisp ? Math.min(128, pot(base)) : pot(base);
-    out[name] = bake(size, GEN[name], name === 'glow' || name === 'plain' ? 0 : crisp ? 0.5 : 1.15, crisp ? false : undefined);
+    const organic = ORGANIC_TEX.has(name), size = name === 'plain' ? 4 : name === 'fabric' ? 64 : crisp ? Math.min(128, pot(base)) : organic && quality === 'high' ? 512 : pot(base);
+    out[name] = bake(size, GEN[name], name === 'glow' || name === 'plain' ? 0 : crisp ? 0.5 : organic ? 1.5 : 1.15, crisp || organic ? false : undefined);   // organic surfaces: bigger, sharper (no painterly softening), stronger relief
   }
   out.rock = out.rock || out.stone;
   return out;

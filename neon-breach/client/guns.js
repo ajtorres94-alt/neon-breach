@@ -495,6 +495,25 @@ for (const [id, gun] of Object.entries(GUNS)) {
   for (const p of a) { if (!p || typeof p !== 'object' || (p.k === 'b' && !(p.sx > 0 && p.sy > 0 && p.sz > 0)) || (p.k === 't' && !(p.r > 0)) || (p.k !== 'b' && p.k !== 't' && p.k !== 'e')) continue; gun.parts.push(p); }
 }
 
+// ---- default iron sights: every gun gets a rear notch and a front post standing clear of everything between them (so the line of sight is never
+// blocked by the receiver, an optic housing or a handguard). gun.ads gives the viewmodel offset that lines that sight picture up with the eye.
+for (const gun of Object.values(GUNS)) {
+  if (gun.id === 'sniper') { gun.ads = { y: 0.1, z: 0.0 }; continue; }       // scope overlay replaces the model when aiming
+  const rz = gun.grip - 0.03, fz = gun.muzzle + 0.05, zlo = Math.min(rz, fz) - 0.012, zhi = Math.max(rz, fz) + 0.012;
+  let top = 0.04;
+  for (const p of gun.parts) {
+    if (p.k === 'b') { if (Math.abs(p.x) < 0.012 && p.z + p.sz / 2 > zlo && p.z - p.sz / 2 < zhi) top = Math.max(top, p.y + p.sy / 2 + Math.abs(Math.sin(p.pt || 0)) * p.sz / 2); }
+    else if (p.k === 't') { const a = Math.min(p.z0, p.z1), b2 = Math.max(p.z0, p.z1); if (Math.abs((p.x0 + p.x1) / 2) < 0.012 && b2 > zlo && a < zhi) top = Math.max(top, Math.max(p.y0, p.y1) + Math.max(p.r, p.r1)); }
+  }
+  const tip = top + 0.012, add = [];
+  for (const s of [-1, 1]) add.push(B(s * 0.0068, (tip + top - 0.02) / 2, rz, 0.003, tip - top + 0.02, 0.012, 'd', 0.0008), B(s * 0.0068, tip - 0.002, rz + 0.0025, 0.003, 0.004, 0.003, 'w', 0.0003));   // rear notch posts
+  add.push(B(0, top - 0.01, rz, 0.02, 0.004, 0.012, 'd', 0.001));
+  add.push(B(0, (tip + top - 0.02) / 2, fz, 0.0035, tip - top + 0.02, 0.01, 'd', 0.0008), B(0, tip - 0.001, fz - 0.002, 0.0022, 0.004, 0.003, 'w', 0.0003));          // front post + bead
+  add.push(B(-0.0072, (tip + top - 0.02) / 2, fz, 0.0025, tip - top + 0.008, 0.009, 'd', 0.0006), B(0.0072, (tip + top - 0.02) / 2, fz, 0.0025, tip - top + 0.008, 0.009, 'd', 0.0006), B(0, tip - 0.0015, fz, 0.0165, 0.0025, 0.009, 'd', 0.0006));   // front sight hood
+  for (const p of add) gun.parts.push(p);
+  gun.ads = { y: tip - 0.002, z: rz };
+}
+
 // ---- micro-detail: every gun is brought to PARTS_PER_GUN parts with deterministic surface detail (screw heads, rivets, hex bolts, machining
 // grooves, knurling, stippling, engraving ticks, weld beads, cooling slots) scattered over its real surfaces in proportion to their area.
 export const PARTS_PER_GUN = 5000;
@@ -573,8 +592,8 @@ function bakeGroup(gun, group, accent, gold, nParts) {
  * Draw a gun. o: { origin:[x,y,z] weapon-space origin in world/view space, yaw, pitch (rotation of the weapon), accent, gold, far (use the low-detail mesh) }
  */
 export function drawGun(R, gun, o) {
-  const { origin, yaw = 0, pitch = 0, accent = [0.5, 0.5, 0.5], far = false, scale = 1 } = o, gold = !!gun.gold || !!o.gold;
-  const n = far ? gun.nBase : o.mid ? gun.nDetail : gun.parts.length, rot = R.rotate(yaw, pitch);
+  const { origin, yaw = 0, pitch = 0, roll = 0, accent = [0.5, 0.5, 0.5], far = false, scale = 1 } = o, gold = !!gun.gold || !!o.gold;
+  const n = far ? gun.nBase : o.mid ? gun.nDetail : gun.parts.length, rot = R.rotate(yaw, pitch, roll);
   const key = `gun:${gun.id}:${gold ? 'g' : accent.map(v => Math.round(v * 20)).join('.')}:${far ? 0 : o.mid ? 2 : 1}`;
   for (const [name, spec, emit] of GROUPS) {
     const mesh = R.loftMesh(`${key}:${name}`, () => bakeGroup(gun, name, accent, gold, n));

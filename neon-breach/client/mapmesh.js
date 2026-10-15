@@ -5,6 +5,7 @@
 import { TEX_SCALE } from './textures.js';
 import * as G from './geom.js';
 import { scatterClutter } from './clutter.js';
+import { sculpt, buildTree } from './organic.js';
 
 const CELL = 1.6;                                   // max face-grid cell (metres): AO and texture detail resolution
 const AO_R = 1.9, AO_STRENGTH = 0.62;
@@ -71,25 +72,56 @@ export function buildMapMesh(map) {
     return 1 - AO_STRENGTH * (occ / cnt) * 1.35;
   }
 
+  // ---- weathering: mottled tone, dirt splash near the floor, moss on outdoor stone. Returns an rgb multiplier.
+  const OUTDOOR = map.id === 'courtyard' || map.id === 'wildwood', MOSSY = new Set(['stone', 'brick', 'concrete', 'wall', 'marble']);
+  const SKIP = new Set(['glow', 'dark', 'accent', 'grass', 'asphalt', 'floor']);
+  function patina(p, n, mat) {
+    if (SKIP.has(mat)) return [1, 1, 1];
+    const m = G.fbm3(p[0] * 0.7, p[1] * 0.8, p[2] * 0.7, 3), k = 0.9 + 0.2 * m, low = Math.max(0, 1 - p[1] / 1.1), side = 1 - Math.abs(n[1]);
+    const dirt = low * low * 0.3 * side * (0.55 + 0.9 * G.fbm3(p[0] * 2.2, p[1] * 2.2, p[2] * 2.2, 5));
+    let r = k - dirt, g2 = k - dirt * 1.05, b = k - dirt * 1.25;
+    if (OUTDOOR && MOSSY.has(mat)) { const t2 = Math.max(0, low * side * G.fbm3(p[0] * 1.6, p[1] * 1.2, p[2] * 1.6, 9) * 1.6 - 0.28); r *= 1 - 0.4 * t2; b *= 1 - 0.55 * t2; }
+    return [r, g2, b];
+  }
+  const ORGANIC = {                                                   // dense sculpted solids; `cell` = target lattice spacing in metres
+    rock: { e: 0.6, kind: 'rock', cell: 0.09, ridge: { f: 0.8, a: 0.42, oct: 5 }, grain: { f: 8, a: 0.03 }, planes: 5, warp: 0.6, taper: 0.22, moss: 0.9 },
+    hedge: { e: 0.42, kind: 'hedge', cell: 0.16, lumps: { f: 5, a: 0.3 }, grain: { f: 14, a: 0.09 }, ridge: { f: 1.2, a: 0.12, oct: 2 }, taper: 0.06 },
+    leaf: { e: 0.82, kind: 'leaf', cell: 0.14, lumps: { f: 4.5, a: 0.34 }, grain: { f: 12, a: 0.1 }, ridge: { f: 1.0, a: 0.15, oct: 2 }, taper: 0.08 },
+    sand: { e: 0.95, kind: 'dune', cell: 0.18, ridge: { f: 0.9, a: 0.08, oct: 3 }, grain: { f: 10, a: 0.02 }, taper: 0.4 },
+    dirt: { e: 0.8, kind: 'dirt', cell: 0.18, ridge: { f: 0.9, a: 0.1, oct: 3 }, grain: { f: 9, a: 0.03 }, taper: 0.3 } };
+
   const uvFor = (mat, axis, x, y, z) => {
     const s = TEX_SCALE[mat] || 2;
     return axis === 0 ? [z / s, y / s] : axis === 1 ? [x / s, z / s] : [x / s, y / s];
   };
 
   // ---- plain boxes: subdivided faces
+  const aoMemo = new Map();
   boxes.forEach((b, bi) => {
     if (b.vis === false || b.y1 - b.y0 < 0.001) return;
     const mat = b.roof ? 'ceil' : b.mat in TEX_SCALE ? b.mat : 'wall', arr = out(mat);
     const vari = 0.95 + hash(bi, 7) * 0.1;
-    const rr = ROUNDED[mat];
+    const rr = ROUNDED[mat], org = ORGANIC[mat];
+    if (org && Math.min(b.x1 - b.x0, b.z1 - b.z0) > 0.8 && b.y1 - b.y0 > 0.5 && !b.roof) {      // soft materials become lumpy solids that stay inside their collision box
+      const hx = (b.x1 - b.x0) / 2, hy = (b.y1 - b.y0) / 2, hz = (b.z1 - b.z0) / 2, c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2];
+      const seg = Math.round(Math.PI * (hx + hz) / org.cell), rings = Math.round((hy * 2 + (hx + hz) * 0.5) / org.cell);
+      const m = sculpt(hx, hy, hz, { ...org, seg, rings, seed: bi % 23 + 1 });
+      for (let i = 0; i < m.length; i += G.STRIDE) {
+        const p = [m[i] + c[0], m[i + 1] + c[1], m[i + 2] + c[2]], n = [m[i + 3], m[i + 4], m[i + 5]];
+        const ax = Math.abs(n[0]) > Math.abs(n[1]) && Math.abs(n[0]) > Math.abs(n[2]) ? 0 : Math.abs(n[1]) > Math.abs(n[2]) ? 1 : 2;
+        const uv = uvFor(mat, ax, p[0], p[1], p[2]), ak = Math.round(p[0] / 0.3) * 73856093 ^ Math.round(p[1] / 0.3) * 19349663 ^ Math.round(p[2] / 0.3) * 83492791 ^ (ax * 2 + (n[ax] > 0 ? 1 : 0)) * 1013, a = (aoMemo.get(ak) ?? (aoMemo.set(ak, ao(p, n, bi)), aoMemo.get(ak))) * vari, pt = patina(p, n, mat);
+        arr.push(p[0], p[1], p[2], n[0], n[1], n[2], a * pt[0] * m[i + 6], a * pt[1] * m[i + 7], a * pt[2] * m[i + 8], uv[0], uv[1]);
+      }
+      return;
+    }
     if (rr && Math.min(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0) > rr * 1.2) {
       const hx = (b.x1 - b.x0) / 2, hy = (b.y1 - b.y0) / 2, hz = (b.z1 - b.z0) / 2, c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2];
       const m = G.genRBox(hx, hy, hz, rr, CELL, rr <= 0.12);
       for (let i = 0; i < m.length; i += G.STRIDE) {
         const p = [m[i] + c[0], m[i + 1] + c[1], m[i + 2] + c[2]], n = [m[i + 3], m[i + 4], m[i + 5]];
         const ax = Math.abs(n[0]) > Math.abs(n[1]) && Math.abs(n[0]) > Math.abs(n[2]) ? 0 : Math.abs(n[1]) > Math.abs(n[2]) ? 1 : 2;
-        const uv = uvFor(mat, ax, p[0], p[1], p[2]), a = ao(p, n, bi) * vari;
-        arr.push(p[0], p[1], p[2], n[0], n[1], n[2], a, a, a, uv[0], uv[1]);
+        const uv = uvFor(mat, ax, p[0], p[1], p[2]), a = ao(p, n, bi) * vari, pt = patina(p, n, mat);
+        arr.push(p[0], p[1], p[2], n[0], n[1], n[2], a * pt[0], a * pt[1], a * pt[2], uv[0], uv[1]);
       }
       return;
     }
@@ -102,8 +134,8 @@ export function buildMapMesh(map) {
       const n = [0, 0, 0]; n[axis] = sg;
       const at = (i, j) => { const p = [0, 0, 0]; p[axis] = sg > 0 ? hi[axis] : lo[axis]; p[bx] = lo[bx] + (hi[bx] - lo[bx]) * i / nb; p[cx] = lo[cx] + (hi[cx] - lo[cx]) * j / nc; return p; };
       const verts = [];
-      for (let j = 0; j <= nc; j++) { const row = []; for (let i = 0; i <= nb; i++) { const p = at(i, j), a = ao(p, n, bi) * vari, uv = uvFor(mat, axis, p[0], p[1], p[2]); row.push([p, a, uv]); } verts.push(row); }
-      const emit = (v) => arr.push(v[0][0], v[0][1], v[0][2], n[0], n[1], n[2], v[1], v[1], v[1], v[2][0], v[2][1]);
+      for (let j = 0; j <= nc; j++) { const row = []; for (let i = 0; i <= nb; i++) { const p = at(i, j), a = ao(p, n, bi) * vari, uv = uvFor(mat, axis, p[0], p[1], p[2]), pt = patina(p, n, mat); row.push([p, a, uv, pt]); } verts.push(row); }
+      const emit = (v) => arr.push(v[0][0], v[0][1], v[0][2], n[0], n[1], n[2], v[1] * v[3][0], v[1] * v[3][1], v[1] * v[3][2], v[2][0], v[2][1]);
       for (let j = 0; j < nc; j++) for (let i = 0; i < nb; i++) {
         const q = [verts[j][i], verts[j][i + 1], verts[j + 1][i + 1], verts[j + 1][i]];
         const order = sg > 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
@@ -120,20 +152,18 @@ export function buildMapMesh(map) {
   const PAINT = { rust: [0.50, 0.30, 0.18], olive: [0.30, 0.36, 0.22], blue: [0.18, 0.32, 0.55], red: [0.60, 0.18, 0.15], white: [0.75, 0.75, 0.72], yellow: [0.78, 0.62, 0.16], gray: [0.4, 0.42, 0.45] };
   const U = unit();
 
+  const treeCache = new Map();
   const DECOR = {
     tree(d) {
       const h = d.h || 5.2, s = d.s || 1, x = d.x, z = d.z, r = hash(x, z), pine = d.type === 'pine';
-      const trunkH = h * (pine ? 0.45 : 0.6);
-      put('wood', frustum(0.2 * s, 0.34 * s, 10), [x, trunkH / 2, z], null, [1, trunkH, 1], [0.85, 0.8, 0.75], 1);
-      const tints = [[0.8 + r * 0.2, 0.95, 0.8], [0.7, 0.9 + r * 0.1, 0.7], [0.9, 1.0, 0.75]];
-      if (pine) {
-        for (let k = 0; k < 4; k++) {
-          const rad = (2.0 - k * 0.42) * s, yy = trunkH * 0.5 + k * h * 0.17;
-          put('leaf', U.cone, [x, yy + 0.9, z], null, [rad, 1.7 * s, rad], [0.55, 0.8, 0.6], 3);
-        }
-      } else {
-        const blobs = [[0, 0, 0, 2.3], [1.2, -0.3, 0.5, 1.7], [-1.1, -0.2, -0.7, 1.8], [0.2, 0.7, -1.0, 1.6], [-0.4, 0.8, 1.0, 1.5]];
-        blobs.forEach((bl, i) => put('leaf', U.sphere, [x + bl[0] * s, h - 0.2 + bl[1] * s, z + bl[2] * s], G.rotYXZ(new Float32Array(9), r * 6 + i, 0, 0), [bl[3] * s, bl[3] * 0.82 * s, bl[3] * s], tints[i % 3], 3));
+      const variant = Math.floor(r * 4), key = (pine ? 'pine' : 'oak') + variant;
+      let parts = treeCache.get(key);
+      if (!parts) { parts = buildTree(variant * 0.137 + 0.05, pine ? 6 : 5.2, 1, pine); treeCache.set(key, parts); }      // 4 sculpted variants per kind, shared by every tree
+      const k = s * h / (pine ? 6 : 5.2), yaw = r * 6.283, Ry = G.rotYXZ(new Float32Array(9), yaw, 0, 0), c = Math.cos(yaw), sn = Math.sin(yaw);
+      for (const p of parts) {
+        const px = (p.pos[0] * c + p.pos[2] * sn) * k, pz = (-p.pos[0] * sn + p.pos[2] * c) * k;
+        const R = p.yaw != null ? G.rotYXZ(new Float32Array(9), yaw + p.yaw, 0, 0) : Ry;
+        put(p.mat, p.mesh, [x + px, p.pos[1] * k, z + pz], R, [p.scale[0] * k, p.scale[1] * k, p.scale[2] * k], p.tint, 1);
       }
     },
     car(d) {
@@ -168,7 +198,18 @@ export function buildMapMesh(map) {
       for (const e of [[d.x0, d.y0, d.z0], [d.x1, d.y1 ?? d.y0, d.z1]]) put('plain', U.sphere, e, null, [r * 1.15, r * 1.15, r * 1.15], [0.2, 0.2, 0.22]);
     },
     cyl(d) {
-      put(d.mat || 'concrete', d.cone ? U.cone : U.cyl, [d.x, d.y + d.h / 2, d.z], null, [d.r, d.h, d.r], d.tint || [1, 1, 1], d.uv || 2);
+      const mat = d.mat || 'concrete', col = ['marble', 'stone', 'concrete', 'brick'].includes(mat) && !d.cone && d.h > 2.4 && d.r < 1.4 && d.r > 0.2;
+      if (col) {                                                                         // classical column: tapered shaft, plinth, torus rings, flared capital with abacus
+        const y0 = d.y, r = d.r, h = d.h, tp = d.tint || [1, 1, 1];
+        put(mat, frustum(0.93, 1, 20), [d.x, y0 + h / 2, d.z], null, [r, h, r], tp, d.uv || 2);
+        put(mat, rbox(r * 1.32, 0.17, r * 1.32, 0.05), [d.x, y0 + 0.17, d.z], null, [1, 1, 1], tp, 1);
+        put(mat, frustum(1.0, 1.25, 20), [d.x, y0 + 0.5, d.z], null, [r, 0.26, r], tp, 1);
+        for (const yy of [y0 + 0.4, y0 + h - 0.38]) put(mat, U.cyl, [d.x, yy, d.z], null, [r * 1.12, 0.07, r * 1.12], tp, 1);
+        put(mat, frustum(1.55, 0.95, 20), [d.x, y0 + h - 0.16, d.z], null, [r, 0.3, r], tp, 1);
+        put(mat, rbox(r * 1.5, 0.06, r * 1.5, 0.03), [d.x, y0 + h - 0.0, d.z], null, [1, 1, 1], tp, 1);
+        return;
+      }
+      put(mat, d.cone ? U.cone : U.cyl, [d.x, d.y + d.h / 2, d.z], null, [d.r, d.h, d.r], d.tint || [1, 1, 1], d.uv || 2);
     },
     sphere(d) { put(d.mat || 'plain', U.sphere, [d.x, d.y, d.z], null, [d.r, d.r * (d.sy || 1), d.r], d.tint || [1, 1, 1], d.uv || 1); },
     rbox(d) {

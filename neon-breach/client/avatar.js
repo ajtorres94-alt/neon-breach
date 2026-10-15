@@ -206,18 +206,115 @@ export function drawSoldier(R, pl, t, o) {
   if (t - (pl.meleeAt || -9) < 0.3) { const k = (t - pl.meleeAt) / 0.3, a0 = A(0.45 - k * 0.6, oy, -0.4 - Math.sin(k * Math.PI) * 0.2), a1 = A(0.45 - k * 0.6, oy, -0.72 - Math.sin(k * Math.PI) * 0.2); R.tube(a0[0], a0[1], a0[2], a1[0], a1[1], a1[2], 0.022, 0.006, [0.88, 0.92, 0.96], 1.1, 0.3); }
 }
 
+// ---- death animations. Each kill picks a style (see pickDeath in game.js): 'fwd' crumple forward, 'back' knocked backwards, 'knee' drop to the knees
+// then slump, 'blast' thrown through the air in a backflip. The body is posed from a handful of curves (pelvis height, torso tilt, travel), with the
+// legs and arms solved by IK, then rests on the floor and sinks away after ~5 s. The weapon is dropped and clatters to the ground.
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const ease = (v) => { v = clamp01(v); return v * v * (3 - 2 * v); };
+const easeOut = (v) => 1 - Math.pow(1 - clamp01(v), 3);
+const easeIn = (v) => clamp01(v) * clamp01(v);
+const lerp1 = (a, b, k) => a + (b - a) * k;
+const DEATH_LIFE = 5;
 function drawDead(R, pl, t, o, wp, skin, camo) {
-  if (t - pl.deadAt >= 4) return;
-  const a = pl.ra || 0, dx = -Math.sin(a), dz = -Math.cos(a), sx = Math.cos(a), sz = -Math.sin(a), X = pl.rx, Y = pl.ry, Z = pl.rz;
-  const limb = mesh(R, 'limb'), white = [1, 1, 1];
+  const d = pl.death || { type: 'fwd', push: null, t0: pl.deadAt, hs: false };
+  const u = t - (d.t0 == null ? pl.deadAt : d.t0);
+  if (u >= DEATH_LIFE) return;
+  const sink = u > DEATH_LIFE - 0.7 ? (u - (DEATH_LIFE - 0.7)) / 0.7 * 0.35 : 0;
+  const { op, tc, gun } = o, white = [1, 1, 1], limb = mesh(R, 'limb');
+  const fx = -Math.sin(pl.ra), fz = -Math.cos(pl.ra);                                          // original facing
+  let px = d.push ? d.push[0] : fx, pz = d.push ? d.push[1] : fz;                              // direction the victim is pushed
+  { const l = Math.hypot(px, pz) || 1; px /= l; pz /= l; }
+  const type = d.type, fwd = type === 'fwd' || type === 'knee', s = fwd ? 1 : -1;               // fall direction relative to the body (forward / backward)
+  // body faces the push direction when falling forwards, towards the shooter when falling backwards; twist into it during the first moments
+  const faceX = fwd ? px : -px, faceZ = fwd ? pz : -pz, yawT = Math.atan2(-faceX, -faceZ);
+  let dyaw = yawT - pl.ra; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+  const yaw = pl.ra + dyaw * ease(u / 0.35);
+  const fX = -Math.sin(yaw), fZ = -Math.cos(yaw);
+  // ---- curves
+  let th, hipH, disp, flail, kick = 0, snap = 0, land = 1;
+  const rest = Math.PI / 2, restH = fwd ? 0.14 : 0.26;
+  if (type === 'fwd') { th = rest * easeIn((u - 0.2) / 0.75) * 0.92 + rest * 0.08 * ease((u - 0.9) / 0.3); hipH = lerp1(0.93, restH, easeOut(u / 0.9)); disp = 0.55 * ease(u / 0.95); flail = Math.sin(clamp01(u / 0.6) * Math.PI); }
+  else if (type === 'back') { th = rest * ease(u / 0.65); hipH = lerp1(0.93, restH, easeIn(u / 0.7)); disp = (d.big ? 1.1 : 0.7) * easeOut(u / 0.7); flail = Math.sin(clamp01(u / 0.7) * Math.PI) * 1.2; kick = Math.sin(clamp01(u / 0.65) * Math.PI); snap = d.hs ? Math.sin(clamp01(u / 0.3) * Math.PI / 2) * 0.6 : 0; }
+  else if (type === 'knee') { th = rest * easeIn((u - 0.45) / 0.75); hipH = u < 0.45 ? lerp1(0.93, 0.5, ease(u / 0.4)) : lerp1(0.5, restH, easeIn((u - 0.45) / 0.75)); disp = 0.4 * ease(u / 1.1); flail = Math.sin(clamp01(u / 0.8) * Math.PI) * 0.5; }
+  else { // blast: launched, tumbling backwards
+    const T = 0.95, uu = Math.min(u, T);
+    th = (rest + Math.PI * 2) * easeOut(u / T);
+    hipH = Math.max(restH, 0.93 + 4.4 * uu - 4.9 * uu * uu); if (u > 0.82) hipH = lerp1(hipH, restH, ease((u - 0.82) / 0.13));
+    disp = 2.6 * easeOut(u / T); flail = 1.4 * (1 - ease(u / 0.9)) + 0.2; kick = 1 - ease(u / 0.9); land = ease((u - 0.7) / 0.25);
+  }
+  const hp0 = [pl.rx + px * disp, pl.ry + hipH - sink, pl.rz + pz * disp];
+  // ---- torso frame: columns of R.rotate(yaw, pitch) are the torso-space x, y, z axes
+  const pitch = -s * th;
+  const M = Array.from(R.rotate(yaw, pitch));
+  const TP = (lx, ly, lz) => [hp0[0] + lx * M[0] + ly * M[3] + lz * M[6], hp0[1] + lx * M[1] + ly * M[4] + lz * M[7], hp0[2] + lx * M[2] + ly * M[5] + lz * M[8]];
+  const floorY = pl.ry - sink;
+  const hipC = TP(0, -0.04, 0);
   R.texture(camo, 2);
-  R.drawMesh(mesh(R, 'torso'), X - dx * 0.25, Y + 0.14, Z - dz * 0.25, R.rotate(a, -Math.PI / 2 + 0.05), 1, 1, 1, white, 0, 1, 0.05);   // face down, head forward
-  const leg = (s, bend) => { const h = [X - dx * 0.28 + sx * s * 0.1, Y + 0.1, Z - dz * 0.28 + sz * s * 0.1], k = [h[0] - dx * 0.4 + sx * bend, Y + 0.09, h[2] - dz * 0.4 + sz * bend], f = [k[0] - dx * 0.4 + sx * bend * 0.6, Y + 0.06, k[2] - dz * 0.4 + sz * bend * 0.6]; R.span(limb, h[0], h[1], h[2], k[0], k[1], k[2], 0.088, white); R.span(limb, k[0], k[1], k[2], f[0], f[1], f[2], 0.066, white); R.rbox(f[0] - dx * 0.05, Y + 0.05, f[2] - dz * 0.05, 0.11, 0.1, 0.28, a, 0, BOOT, 0.04); };
-  leg(-1, -0.1); leg(1, 0.14);
-  const arm = (s, spread) => { const sh = [X + dx * 0.2 + sx * s * 0.22, Y + 0.12, Z + dz * 0.2 + sz * s * 0.22], e = [sh[0] + sx * s * spread + dx * 0.1, Y + 0.06, sh[2] + sz * s * spread + dz * 0.1], h = [e[0] + sx * s * spread * 0.6 + dx * 0.15, Y + 0.05, e[2] + sz * s * spread * 0.6 + dz * 0.15]; R.span(limb, sh[0], sh[1], sh[2], e[0], e[1], e[2], 0.058, white); R.span(limb, e[0], e[1], e[2], h[0], h[1], h[2], 0.047, white); R.sphere(h[0], h[1], h[2], 0.04, 0.03, 0.045, GLOVE); };
-  arm(-1, 0.25); arm(1, 0.15);
-  R.texture('skin', 1);
-  R.drawMesh(mesh(R, 'head'), X + dx * 0.62, Y + 0.11, Z + dz * 0.62, R.rotate(a, -Math.PI / 2 + 0.3), 1, 1, 1, skin, 0, 1, 0.05);
+  R.drawMesh(mesh(R, 'torso'), hipC[0], hipC[1], hipC[2], R.rotate(yaw, pitch), 1, 1, 1, white, 0, 1, 0.05);
+  R.texture('fabric', 2);
+  R.drawMesh(mesh(R, 'vest'), hipC[0], hipC[1], hipC[2], R.rotate(yaw, pitch), 1, 1, 1, o.tm ? tc.map(c => c * 0.28 + 0.1) : WEBBING, 0, 1, 0.1);
   R.texture('plain');
-  if (o.op.hat && o.op.hat !== 'balaclava') R.sphere(X + dx * 0.66, Y + 0.2, Z + dz * 0.66, 0.1, 0.06, 0.11, o.op.hatCol || [0.25, 0.28, 0.2], 0, 1, 0.1);
+  const rb = (lx, ly, lz, sx, sy_, sz, col, r, em = 0, spc = 0.2) => { const q = TP(lx, ly - 0.04, lz); R.rbox(q[0], q[1], q[2], sx, sy_, sz, yaw, pitch, col, r, em, 1, spc); };
+  rb(0, 0.04, 0, 0.35, 0.07, 0.23, [0.07, 0.07, 0.08], 0.025); rb(0, 0.04, -0.12, 0.06, 0.05, 0.02, [0.55, 0.55, 0.5], 0.008, 0, 0.8); rb(0.2, -0.04, -0.06, 0.07, 0.2, 0.12, [0.1, 0.1, 0.11], 0.025);
+  for (const sx of [-0.105, -0.035, 0.035, 0.105]) rb(sx, 0.31, -0.15, 0.065, 0.14, 0.05, TAN.map(c => c * 0.8), 0.02);
+  rb(-0.1, 0.17, -0.14, 0.12, 0.09, 0.06, WEBBING, 0.02); rb(0.1, 0.17, -0.14, 0.12, 0.09, 0.06, WEBBING, 0.02); rb(0, 0.44, -0.145, 0.15, 0.06, 0.03, [0.1, 0.1, 0.11], 0.012);
+  rb(0, 0.3, 0.17, 0.3, 0.38, 0.12, TAN.map(c => c * 0.75), 0.05, 0, 0.1); rb(0, 0.28, 0.24, 0.22, 0.22, 0.04, TAN.map(c => c * 0.65), 0.03);
+  rb(0, 0.11, -0.145, 0.34, 0.06, 0.03, [0.1, 0.1, 0.09], 0.012); rb(0, 0.38, -0.16, 0.2, 0.026, 0.012, tc, 0.006, 0.9);
+  // ---- legs: pelvis frame; ankles blend from standing on the floor to trailing straight behind the torso as it falls
+  const w = ease(th / rest), fwdW = [fX, 0, fZ];
+  R.texture(camo, 2);
+  const feet = [];
+  for (let i = 0; i < 2; i++) {
+    const sd = i ? 0.1 : -0.1, hip = TP(sd, -0.02, 0);
+    const stand = [pl.rx + (-fZ) * 0 + Math.cos(yaw) * sd, floorY + 0.1, pl.rz - Math.sin(yaw) * sd];
+    const kneeling = type === 'knee' ? [stand[0] - fX * 0.28 * ease(u / 0.4), floorY + 0.1, stand[2] - fZ * 0.28 * ease(u / 0.4)] : stand;
+    const trail = TP(sd * 1.2, -0.88, (i ? 1 : -1) * 0.05 * kick);
+    const k = type === 'blast' ? 1 : w;
+    let ank = [lerp1(kneeling[0], trail[0], k), lerp1(kneeling[1], trail[1], k), lerp1(kneeling[2], trail[2], k)];
+    ank[1] += kick * 0.3 * (i ? 1 : 0.6) * (type === 'blast' ? 0 : 1);
+    ank[1] = Math.max(ank[1], floorY + 0.09);
+    const knee = ik(hip, ank, 0.44, 0.45, [fwdW[0], 0.4, fwdW[2]]);
+    R.span(limb, hip[0], hip[1], hip[2], knee[0], knee[1], knee[2], 0.088, white, 0.05); R.span(limb, knee[0], knee[1], knee[2], ank[0], ank[1] + 0.02, ank[2], 0.066, white, 0.05);
+    feet.push(ank);
+  }
+  R.texture('plain');
+  for (const a of feet) { R.rbox(a[0] + fX * 0.07, a[1] - 0.03, a[2] + fZ * 0.07, 0.115, 0.13, 0.31, yaw, -s * th * 0.6 * 0 + 0.1, BOOT, 0.04, 0, 1, 0.25); R.rbox(a[0] + fX * 0.07, a[1] - 0.085, a[2] + fZ * 0.07, 0.12, 0.035, 0.32, yaw, 0.1, SOLE, 0.012); }
+  // ---- arms flail out and up, then flop
+  const shR = TP(0.215, 0.5, 0), shL = TP(-0.215, 0.5, 0), hands = [];
+  R.texture(camo, 2);
+  for (const [sh, sg] of [[shR, 1], [shL, -1]]) {
+    const hand = TP(sg * (0.36 + 0.12 * flail), lerp1(0.28, 0.82, flail * 0.8), (type === 'back' ? -0.2 : -0.28) * (1 - 0.5 * ease(u / 1)) - 0.1 * flail * sg);
+    const el = ik(sh, hand, 0.3, 0.29, [sg * 0.6, -0.4, 0.2]);
+    R.span(limb, sh[0], sh[1], sh[2], el[0], el[1], el[2], 0.058, white, 0.05); R.span(limb, el[0], el[1], el[2], hand[0], hand[1], hand[2], 0.047, white, 0.05);
+    R.sphere(sh[0], sh[1], sh[2], 0.072, 0.068, 0.072, white, 0, 1, 0.05); hands.push(hand);
+  }
+  R.texture('plain');
+  for (const hd of hands) R.rbox(hd[0], hd[1], hd[2], 0.07, 0.07, 0.1, yaw, pitch, GLOVE, 0.028, 0, 1, 0.2);
+  // ---- neck + head (snaps back on a headshot, droops forward otherwise)
+  const hpit = pitch + (s > 0 ? -0.35 * ease(u / 0.8) : 0.3 + snap);
+  const head0 = TP(0, 0.64, -0.01), hpp = [head0[0], head0[1] + 0.07 * Math.cos(pitch) , head0[2]];
+  const nk = TP(0, 0.55, -0.01);
+  R.texture('skin', 1);
+  R.span(R.meshes.cyl, nk[0], nk[1], nk[2], head0[0], head0[1] - 0.02, head0[2], 0.052, skin, 0.05);
+  const hp = TP(0, 0.71, -0.01);
+  R.drawMesh(mesh(R, 'head'), hp[0], hp[1], hp[2], R.rotate(yaw, hpit), 1, 1, 1, skin, 0, 1, 0.05);
+  R.texture('plain');
+  const hatC = op.hatCol || [0.2, 0.2, 0.2], hairC = op.hair || [0.1, 0.07, 0.05];
+  const HRot = R.rotate(yaw, hpit);
+  const hatMesh = (k, col, sc, tex = 'plain') => { R.texture(tex, 2); R.drawMesh(mesh(R, k), hp[0], hp[1], hp[2], HRot, sc, sc, sc, col, 0, 1, 0.1); R.texture('plain'); };
+  if (op.hat === 'balaclava') hatMesh('head', hatC, 1.04);
+  else if (op.hat === 'helmet' || op.hat === 'hardhat') hatMesh('helmet', op.hat === 'helmet' ? [0.3, 0.34, 0.24] : TAN, 1.04, 'fabric');
+  else if (op.hat === 'cap' || op.hat === 'beanie') { hatMesh('hair', hairC, 1.02); hatMesh('helmet', hatC, 1.0); }
+  else hatMesh('hair', hairC, 1.03);
+  if (pl.helm) { const q = hp; R.sphere(q[0], q[1] + 0.07 * Math.cos(hpit), q[2], 0.125, 0.085, 0.135, [0.55, 0.58, 0.62], 0, 1, 0.9, yaw, hpit); }
+  // ---- dropped weapon: tossed from the hands at the start of the fall, bounces and settles on its side
+  if (gun) {
+    const g0 = hands[0], tg = Math.max(0, u - 0.12), gy = Math.max(floorY + 0.045, g0[1] + 1.6 * tg - 4.9 * tg * tg * 0.9), gk = easeOut(tg / 0.7);
+    const gx = lerp1(g0[0], g0[0] + px * 0.9 + fX * 0.2, gk), gz = lerp1(g0[2], g0[2] + pz * 0.9 + fZ * 0.2, gk);
+    const spin = (1 - ease(tg / 0.6)) * 4.0, roll = lerp1(0, 1.35, ease(tg / 0.5));
+    drawGun(R, gun, { origin: [gx, gy, gz], yaw: yaw + 0.7 + spin * 0.4, pitch: 0, roll, accent: o.accent, gold: o.gold, far: true });
+  }
+  // ---- blood pool spreads under the body once it has landed
+  const bl = ease((u - (type === 'blast' ? 0.9 : 0.6)) / 1.6);
+  if (bl > 0.01 && !(o.noBlood)) { R.transparent(true); R.tube(hp0[0], floorY + 0.012, hp0[2], hp0[0], floorY + 0.02, hp0[2], 0.2 + 0.4 * bl, 0.2 + 0.4 * bl, [0.32, 0.02, 0.03], 0.2, 0, 0.8 * (1 - sink * 2)); R.transparent(false); }
 }

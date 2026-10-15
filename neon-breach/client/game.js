@@ -7,6 +7,7 @@ import { drawItem } from './items.js';
 import { buildLights, updateLights, drawFixtures, drawBeams } from './lights.js';
 import { P, stepBody, newBody, raycast, dirFromAngles } from '/shared/physics.js';
 import { WEAPONS, WEAPON_ORDER, CATEGORIES, GADGETS, MODES, PICKUP_COLORS, STREAK_INFO, STREAK_TIERS } from '/shared/weapons.js';
+import { reloadPose, drawProps } from './reload.js';
 import { drawDog, drawSentry, drawRats, drawBarrier, hpBar } from './units.js';
 import { settings, onSettings, OPERATORS, teamInfo } from './settings.js';
 import { input, bindCanvas, beginFrame, endFrame, actionDown, actionPressed, padPressed, mouseDelta, digitPressed, requestLock, releaseLock } from './input.js';
@@ -227,6 +228,7 @@ function onSnapshot(s) {
     const ro = game.roster.get(e.i) || {};
     if (!pl) { pl = { id: e.i, rx: e.x, ry: e.y, rz: e.z, ra: e.a, rp: e.p, walk: 0, speed: 0, deadAt: 0 }; S.players.set(e.i, pl); }
     const respawned = e.al && !pl.al;
+    if (respawned) pl.death = null;
     if (!e.al && pl.al) pl.deadAt = t;
     if (respawned || Math.hypot(e.x - pl.tx, e.z - pl.tz) > 6) { pl.rx = e.x; pl.ry = e.y; pl.rz = e.z; pl.ra = e.a; }
     pl.name = ro.name || pl.name || 'Operator'; pl.bot = !!ro.bot; pl.op = ro.op || 0; pl.team = e.tm;
@@ -301,7 +303,7 @@ function onEvent(ev) {
         audio.play('die');
       }
       const v = S.players.get(ev.v);
-      if (v) { spark([v.tx, v.ty + 1, v.tz], 14, [0.9, 0.1, 0.15], 4); }
+      if (v) { spark([v.tx, v.ty + 1, v.tz], 14, [0.9, 0.1, 0.15], 4); v.death = pickDeath(v, ev, t); if (ev.v !== game.myId) { const sp = spatial(v.tx, v.ty + 1, v.tz, 1), land = v.death.type === 'blast' ? 900 : v.death.type === 'knee' ? 1000 : 650; audio.play('dieo', sp); setTimeout(() => audio.play('thud', sp), land); } }
       break;
     }
     case 'boom': {
@@ -417,6 +419,24 @@ function buildRain() {
   }
 }
 
+/** Choose how a killed player falls: thrown by blasts, dropped to the knees by blades, knocked back by headshots and heavy guns, crumpled otherwise. */
+function pickDeath(v, ev, t) {
+  const atk = ev.a && S.players.get(ev.a);
+  let px = 0, pz = 0;
+  if (atk) { px = v.tx - atk.tx; pz = v.tz - atk.tz; }
+  if (Math.hypot(px, pz) < 0.05) { px = -Math.sin(v.ta || 0); pz = -Math.cos(v.ta || 0); }   // no known source: fall the way the victim faces
+  const l = Math.hypot(px, pz) || 1; px /= l; pz /= l;
+  const facing = [-Math.sin(v.ta || 0), -Math.cos(v.ta || 0)], towards = px * facing[0] + pz * facing[1];     // > 0: pushed the way the victim faces (shot from behind)
+  const w = ev.w;
+  let type = towards > 0 ? 'fwd' : 'back', big = false;
+  if (w === 'mine' || w === 'laser' || w === 'launcher') type = 'blast';
+  else if (w === 'melee' || w === 'knife') type = 'knee';
+  else if (ev.hs) type = towards > 0 ? 'fwd' : 'back';
+  else if (w === 'shotgun' || w === 'mossberg' || w === 'spas') { type = 'back'; big = true; }
+  else if (w === 'fall') type = 'fwd';
+  return { type, push: [px, pz], t0: t, hs: !!ev.hs, big };
+}
+
 function feed(ev) {
   const el = $('h-feed');
   const row = document.createElement('div'); row.className = 'feedrow';
@@ -510,7 +530,7 @@ function cycleWeapon(dir) {
 function startReload() {
   const w = WEAPONS[S.cur], inv = S.inv[S.cur];
   if (!inv || S.reloadEnd || inv.mag >= w.mag || inv.reserve <= 0) return;
-  S.reloadEnd = now() + w.reload; audio.play('reload');
+  S.reloadEnd = now() + w.reload; S.rlCues = new Set(); if (audio.hasSample('reload')) audio.play('reload');
 }
 function finishReload() {
   const w = WEAPONS[S.cur], inv = S.inv[S.cur];
@@ -592,7 +612,7 @@ function updateLocal(dt, t) {
   const ctl = controlling();
 
   // mouse / stick look, scaled by zoom so ADS aiming feels consistent
-  const ads = ctl && S.alive && actionDown('ads') && !S.reloadEnd;
+  const ads = ctl && S.alive && (actionDown('ads') || window.__ads) && !S.reloadEnd;
   S.adsT = lerp(S.adsT, ads ? 1 : 0, 1 - Math.exp(-dt * 14));
   const zoom = lerp(1, wDef.zoom, S.adsT);
   if (ctl && S.alive && actionPressed('call')) openWheel();
@@ -710,21 +730,32 @@ function drawViewmodel(t, cam) {
   const b = S.body, sp = Math.min(1, Math.hypot(b.vx, b.vz) / 8) * (b.grounded ? 1 : 0.3);
   const bob = settings.access.reduceShake ? 0 : 1;
   const a = S.adsT;
-  let x = lerp(0.19, 0, a), y = lerp(-0.2, -0.105, a), z = lerp(-0.38, -0.3, a);
+  const ad = gun.ads || { y: 0.105, z: -0.03 };
+  let x = lerp(0.19, 0, a), y = lerp(-0.2, -ad.y, a), z = lerp(-0.38, clamp(-0.3 - ad.z, -0.5, -0.22), a);
   x += Math.cos(S.bob) * 0.012 * sp * bob; y += Math.abs(Math.sin(S.bob)) * 0.014 * sp * bob;
   z += S.vmKick * 0.07; y += S.vmKick * 0.012;
   let tilt = S.vmKick * 0.12;
   const tt = now();
-  if (S.reloadEnd) { const prog = 1 - (S.reloadEnd - tt) / w.reload, dip = Math.sin(clamp(prog, 0, 1) * Math.PI); y -= dip * 0.14; tilt -= dip * 0.5; x += dip * 0.04; }
+  let rl = null, yawG = 0, rollG = 0;
+  if (S.reloadEnd || window.__reloadP != null) {                    // per-gun reload animation (client/reload.js)
+    const prog = clamp(window.__reloadP != null ? window.__reloadP : 1 - (S.reloadEnd - tt) / w.reload, 0, 1);
+    rl = reloadPose(id, gun, w, prog);
+    if (rl) {
+      x += rl.g[0]; y += rl.g[1]; z += rl.g[2]; tilt += rl.g[3]; yawG = rl.g[4]; rollG = rl.g[5];
+      if (window.__reloadP == null && S.reloadEnd) { S.rlCues = S.rlCues || new Set(); for (const [ct, cn] of rl.cue) { const key = cn + ct; if (prog >= ct && !S.rlCues.has(key)) { S.rlCues.add(key); if (!audio.hasSample('reload')) audio.play(cn); } } }
+    } else { const dip = Math.sin(prog * Math.PI); y -= dip * 0.14; tilt -= dip * 0.5; x += dip * 0.04; }
+  }
   if (tt < S.switchEnd) { const p = (S.switchEnd - tt) / 0.3; y -= p * 0.18; tilt -= p * 0.4; }
   { const sr = S.sprintT || 0; x += sr * 0.1; y -= sr * 0.06; z += sr * 0.03; tilt -= sr * 0.5; }                // gun lowered and angled while sprinting
   const cp = Math.cos(tilt), sp2 = Math.sin(tilt);
   R.beginViewmodel(Math.max(0.6, cam.fov * 0.62 + 0.1));
+  const gm = Array.from(R.rotate(yawG, tilt, rollG));              // gun orientation (columns = weapon-space x, y, z axes)
   const accent = hex(w.color), op = OPERATORS[settings.op % OPERATORS.length], skin = op.skin;
   const gold = id === 'golden';
   // local (weapon-space) point -> view space, rotated about X by `tilt`
-  const P = (lx, ly, lz) => [x + lx, y + ly * cp - lz * sp2, z + ly * sp2 + lz * cp];
-  drawGun(R, gun, { origin: P(0, 0, 0), yaw: 0, pitch: tilt, accent, gold });
+  const P = (lx, ly, lz) => [x + lx * gm[0] + ly * gm[3] + lz * gm[6], y + lx * gm[1] + ly * gm[4] + lz * gm[7], z + lx * gm[2] + ly * gm[5] + lz * gm[8]];
+  drawGun(R, gun, { origin: P(0, 0, 0), yaw: yawG, pitch: tilt, roll: rollG, accent, gold });
+  if (rl && rl.props.length) drawProps(R, rl.props, P, tilt);
   const mp = (tt - S.meleeAt) / 0.35;
   if (mp >= 0 && mp < 1) {                                          // knife slash (also used for the throw)
     const sw = Math.sin(mp * Math.PI), kx = lerp(0.34, -0.2, mp), ky = -0.12 + sw * 0.1, kz = -0.42 - sw * 0.1, yw = lerp(-0.9, 0.9, mp);
@@ -733,7 +764,8 @@ function drawViewmodel(t, cam) {
   }
   // gloved hands + sleeves
   const glove = [0.27, 0.22, 0.17];
-  const h1 = P(0, -0.075, gun.grip + 0.07), h2 = P(-0.02, -0.04, gun.fore);
+  const d1 = rl ? rl.h1 : [0, 0, 0], d2 = rl ? rl.h2 : [0, 0, 0];
+  const h1 = P(d1[0], -0.075 + d1[1], gun.grip + 0.07 + d1[2]), h2 = P(-0.02 + d2[0], -0.04 + d2[1], gun.fore + d2[2]);
   R.texture('fabric', 2);
   R.limb(h1[0] + 0.02, h1[1] - 0.02, h1[2] + 0.04, h1[0] + 0.1, h1[1] - 0.3, h1[2] + 0.5, 0.066, op.suit);
   R.limb(h2[0], h2[1] - 0.02, h2[2] + 0.04, h2[0] - 0.22, h2[1] - 0.3, h2[2] + 0.45, 0.066, op.suit);
@@ -827,7 +859,7 @@ function drawWorldObjects(t, cam) {
     const tint = [0.3, 1, 0.45];
     if (k === 'dog') drawDog(R, sm, t, tint); else if (k === 'sentry') drawSentry(R, sm, t, tint, Math.sin(t * 9) > 0.7); else if (k === 'rats') drawRats(R, sm, t, tint);
     else if (k === 'barrier') drawBarrier(R, { ...sm, h: window.__showHp || 300, m: 300, ra: 0 }, t, tint, cam.yaw);
-    else { R.style({ outline: 0.012, rim: 0.35 }); drawPlayer({ id: 77, rx: x, ry: y, rz: z, ra: a, rp: 0, walk: t * 5, speed: 4, crouch: false, lean: 0, al: true, wpn: window.__showWpn || 'm4', op: +k || 0, team: 0, carry: -1, meleeAt: 0 }, t, cam); }
+    else { R.style({ outline: 0.012, rim: 0.35 }); drawPlayer({ id: 77, rx: x, ry: y, rz: z, ra: a, rp: 0, walk: t * 5, speed: 4, crouch: false, lean: 0, al: !window.__dead, deadAt: t - ((window.__dead || {}).u || 0), death: window.__dead ? { type: window.__dead.type, push: [Math.sin(cam.yaw) * 0.6 + Math.cos(cam.yaw) * 0.8, Math.cos(cam.yaw) * 0.6 - Math.sin(cam.yaw) * 0.8], t0: t - window.__dead.u, hs: !!window.__dead.hs } : null, wpn: window.__showWpn || 'm4', op: +k || 0, team: 0, carry: -1, meleeAt: 0 }, t, cam); }
   }
   drawUnits(t, cam);
   if (window.__showItem) { const f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)]; drawItem(R, window.__showItem, GUNS, cam.x + f[0] * 1.1, cam.y - 0.05, cam.z + f[1] * 1.1, window.__spin ?? t * 1.6, [0.9, 0.7, 0.2], 1); }
