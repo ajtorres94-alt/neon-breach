@@ -8,6 +8,33 @@
 <meta name="description" content="Neon Breach — an original online tactical arena shooter. Six modes, four arenas, bots, and up to eight operators per room.">
 <link rel="icon" href="/brand/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
+<!-- fetch the whole module graph in parallel instead of discovering it import by import -->
+<link rel="modulepreload" href="/main.js">
+<link rel="modulepreload" href="/game.js">
+<link rel="modulepreload" href="/gl.js">
+<link rel="modulepreload" href="/ui.js">
+<link rel="modulepreload" href="/settings.js">
+<link rel="modulepreload" href="/audio.js">
+<link rel="modulepreload" href="/geom.js">
+<link rel="modulepreload" href="/guns.js">
+<link rel="modulepreload" href="/textures.js">
+<link rel="modulepreload" href="/mapmesh.js">
+<link rel="modulepreload" href="/organic.js">
+<link rel="modulepreload" href="/clutter.js">
+<link rel="modulepreload" href="/avatar.js">
+<link rel="modulepreload" href="/hands.js">
+<link rel="modulepreload" href="/lights.js">
+<link rel="modulepreload" href="/cameras.js">
+<link rel="modulepreload" href="/items.js">
+<link rel="modulepreload" href="/units.js">
+<link rel="modulepreload" href="/board.js">
+<link rel="modulepreload" href="/input.js">
+<link rel="modulepreload" href="/reload.js">
+<link rel="modulepreload" href="/shared/physics.js">
+<link rel="modulepreload" href="/shared/weapons.js">
+<link rel="modulepreload" href="/shared/maps.js">
+<link rel="modulepreload" href="/shared/cameras.js">
+<link rel="modulepreload" href="/shared/nav.js">
 </head>
 <body data-view="menu">
 <canvas id="gl"></canvas>
@@ -105,6 +132,10 @@
         <div class="two">
           <label class="field"><span>Weather</span><select id="cf-weather"><option value="clear">Clear</option><option value="rain">Rain</option></select></label>
           <label class="field"><span>Item spawns</span><select id="cf-items"><option value="random">Random each match</option><option value="classic">Classic (fixed)</option></select></label>
+        </div>
+        <div class="two" id="cf-teamnames">
+          <label class="field"><span>Team 1 name</span><input id="cf-tn0" maxlength="14" placeholder="CIPHER" autocomplete="off"></label>
+          <label class="field"><span>Team 2 name</span><input id="cf-tn1" maxlength="14" placeholder="EMBER" autocomplete="off"></label>
         </div>
         <label class="field"><span>Loadout</span><select id="cf-loadout"><option value="arsenal">Arsenal — carry everything you pick up</option><option value="tactical">Tactical — 1 sidearm + 2 primaries + mines</option></select></label>
       </div>

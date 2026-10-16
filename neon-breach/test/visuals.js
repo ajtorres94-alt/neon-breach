@@ -11,10 +11,10 @@ console.log('Iron sights');
 for (const [id, g] of Object.entries(GUNS)) {
   if (id === 'sniper') { ok(g.ads && g.ads.y > 0, 'sniper aims through its scope overlay'); continue; }
   const top = g.ads && g.ads.y;
-  // front post + two rear posts exist at the sight height and nothing in between rises above them
+  // two rear posts exist (the front sight at the muzzle was removed) at the sight height and nothing in between rises above them
   const posts = g.parts.filter(p => p.k === 'b' && !p.f && p.y + p.sy / 2 >= top - 0.004 && p.sx <= 0.006 && Math.abs(p.x) < 0.012);
   const rear = posts.filter(p => Math.abs(p.z - (g.grip - 0.03)) < 0.01), front = posts.filter(p => Math.abs(p.z - (g.muzzle + 0.05)) < 0.01);
-  ok(rear.length >= 2 && front.length >= 1, `${id}: rear notch (${rear.length} posts) + front post (${front.length}) at ads height ${top.toFixed(3)}`);
+  ok(rear.length >= 2 && front.length === 0, `${id}: rear notch (${rear.length} posts), no front sight at the muzzle (${front.length}), ads height ${top.toFixed(3)}`);
 }
 
 console.log('Reload animations');

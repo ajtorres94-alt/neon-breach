@@ -78,7 +78,7 @@ uniform sampler2D uTex; uniform sampler2D uShadow;
 uniform vec3 uTint; uniform float uUseTint; uniform float uEmit; uniform float uAlpha; uniform float uSpec;
 uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uGnd;
 uniform vec3 uFog; uniform vec2 uFogRange; uniform vec3 uCam; uniform float uFogOn;
-uniform float uBright; uniform float uLight; uniform float uFlash;
+uniform float uBright; uniform float uLight; uniform float uFlash; uniform float uDark;
 #define NL 8
 uniform vec4 uLP[NL]; uniform vec3 uLC[NL]; uniform vec4 uLD[NL];   // dynamic lights: pos+radius, colour*intensity, spot dir+cone (cone<-1 = point)
 uniform float uMicro;
@@ -115,12 +115,13 @@ void main(){
   vec3 n = normalize(vNor);
   vec3 base = texture2D(uTex, vUV).rgb * mix(vCol, uTint, uUseTint);
   if (uMicro > 0.0) {                                   // procedural micro-relief in world space: three octaves of gradient noise bend the normal and mottle the albedo
-    float fadeM = 1.0 - smoothstep(14.0, 40.0, length(uCam - vWorld));
+    float dM = length(uCam - vWorld), fadeM = 1.0 - smoothstep(10.0, 28.0, dM);
     if (fadeM > 0.0) {
-      vec4 m1 = vnoise3(vWorld * 7.0), m2 = vnoise3(vWorld * 23.0 + 3.1), m3 = vnoise3(vWorld * 61.0 + 7.7);
-      vec3 gr = m1.yzw * 0.5 + m2.yzw * 0.3 + m3.yzw * 0.2;
+      vec4 m1 = vnoise3(vWorld * 7.0), m2 = vnoise3(vWorld * 23.0 + 3.1);
+      vec3 gr = m1.yzw * 0.62 + m2.yzw * 0.38; float hv = m1.x * 0.62 + m2.x * 0.38;
+      if (dM < 12.0) { vec4 m3 = vnoise3(vWorld * 61.0 + 7.7); gr = m1.yzw * 0.5 + m2.yzw * 0.3 + m3.yzw * 0.2; hv = m1.x * 0.5 + m2.x * 0.3 + m3.x * 0.2; }   // finest octave only up close
       n = normalize(n - (gr - n * dot(gr, n)) * 0.5 * uMicro * fadeM);
-      base *= 1.0 + ((m1.x * 0.5 + m2.x * 0.3 + m3.x * 0.2) - 0.5) * 0.5 * uMicro * fadeM;
+      base *= 1.0 + (hv - 0.5) * 0.5 * uMicro * fadeM;
     }
   }
   vec3 L = normalize(uSun);
@@ -130,8 +131,8 @@ void main(){
   float wrap = smoothstep(0.12, 0.82, dot(n, L) * 0.55 + 0.45);
   vec3 amb = mix(uGnd, uSky, 0.5 + 0.5 * n.y);
   vec3 shade = amb * vec3(0.92, 0.97, 1.08);
-  vec3 sunl = uSunCol * vec3(1.06, 1.0, 0.9) * wrap * mix(0.27, 1.0, sh);          // +30% sun intensity and +30% shadow contrast over the previous grade
-  vec3 lit = (shade * 0.92 + sunl * (0.42 + 0.58 * sh) * 1.04) * uLight;
+  vec3 sunl = uSunCol * vec3(1.06, 1.0, 0.9) * wrap * mix(0.2, 1.0, sh);           // deeper cast shadows
+  vec3 lit = (shade * 0.92 + sunl * (0.34 + 0.66 * sh) * 1.04) * uLight;
   vec3 col = base * lit * uBright;
   vec3 V = normalize(uCam - vWorld);
   vec3 dyn = vec3(0.0);
@@ -147,7 +148,7 @@ void main(){
     if (uSpec > 0.0) c += lc * att * cone * pow(max(dot(n, normalize(ld + V)), 0.0), 28.0) * uSpec * 0.9;
     dyn += c;
   }
-  dyn = min(dyn * 1.3, vec3(0.98));                                                   // +30% dynamic light
+  dyn = min(dyn * 1.45, vec3(1.1));                                                   // stronger dynamic light against the darker ambient
   col += base * dyn * 1.0 * uBright + dyn * 0.03 * uBright;
   if (uSpec > 0.0) {
     vec3 H = normalize(L + V);
@@ -166,6 +167,7 @@ void main(){
   col = mix(vec3(lum), col, 1.14);                                                    // colour grade: richer saturation
   { vec3 x = col * 1.12;                                                              // filmic tone-map (ACES fit): rolls off highlights, deepens shadows
     col = clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+  col *= uDark;                                                                       // every map about 20% darker after tone-mapping (so bright, saturated maps darken too); lamps and glow are exempt
   col = mix(col, base * uBright, uEmit);
   col += vec3(uFlash);
   if (uFogOn > 0.5) {
@@ -333,6 +335,8 @@ export function createRenderer(canvas, opts = {}) {
   }
 
   function setMap(map) {
+    if (state.mapRef === map && state.groups.length) return;                    // same arena as last match: the baked mesh and shadow map are still valid
+    state.mapRef = map;
     for (const g of state.groups) gl.deleteBuffer(g.buf);
     state.groups = [];
     const groups = buildMapMesh(map);
@@ -340,7 +344,7 @@ export function createRenderer(canvas, opts = {}) {
     for (const b of map.boxes) maxY = Math.max(maxY, b.y1);
     for (const [mat, arr] of Object.entries(groups)) {
       if (!arr.length) continue;
-      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW);
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW);
       state.groups.push({ mat, tex: mat === 'ceil' ? 'concrete' : mat, noShadow: mat === 'ceil', buf, count: arr.length / G.STRIDE, emit: mat === 'glow' ? 1 : 0 });
     }
     state.theme = map.theme;
@@ -382,12 +386,12 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform3fv(U.uSunCol, [0.82 * (dim < 1 ? 0.55 : 1), 0.76 * (dim < 1 ? 0.6 : 1), 0.62 * (dim < 1 ? 0.7 : 1)]);
     gl.uniform3fv(U.uSky, t.sky.map(c => 0.34 + c * 0.55));
     gl.uniform3fv(U.uGnd, t.fog.map(c => 0.2 + c * 0.32));
-    gl.uniform3fv(U.uFog, t.fog.map(c => c * dim));
+    gl.uniform3fv(U.uFog, t.fog.map(c => c * dim * 0.88));
     gl.uniform2f(U.uFogRange, t.fogNear * (dim < 1 ? 0.7 : 1) * state.fogScale, t.fogFar * (dim < 1 ? 0.7 : 1) * state.fogScale);
-    gl.uniform1f(U.uLight, light); gl.uniform1f(U.uBright, state.bright);
+    gl.uniform1f(U.uLight, light); gl.uniform1f(U.uBright, state.bright); gl.uniform1f(U.uDark, 0.8);
     gl.uniform3fv(U.uCam, state.cam); gl.uniform1f(U.uFlash, 0); gl.uniform1f(U.uSpec, 0); gl.uniform1f(U.uUVMul, 1);
     gl.uniform3f(U.uInvS, 1, 1, 1);
-    gl.uniform1f(U.uRim, 0.12); gl.uniform1f(U.uOutlineOn, 0); gl.uniform1f(U.uOutline, 0); state.outlineW = 0; state.inVM = false;
+    gl.uniform1f(U.uRim, 0.12); gl.uniform1f(U.uOutlineOn, 0); gl.uniform1f(U.uOutline, 0); state.outlineW = 0; state.inVM = false; resetUC();
   }
 
   function resize(w, h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
@@ -435,7 +439,7 @@ export function createRenderer(canvas, opts = {}) {
       setTex(g.tex || g.mat); gl.uniform1f(U.uEmit, g.emit); gl.uniform1f(U.uMicro, g.emit ? 0 : (MICRO[g.mat] ?? 0.2)); gl.uniform1f(U.uSpec, g.emit ? 0 : (SPEC[g.mat] ?? 0));
       bindMesh(g); gl.drawArrays(gl.TRIANGLES, 0, g.count);
     }
-    gl.uniform1f(U.uMicro, 0); gl.uniform1f(U.uSpec, 0); gl.uniform1f(U.uEmit, 0);
+    gl.uniform1f(U.uMicro, 0); gl.uniform1f(U.uSpec, 0); gl.uniform1f(U.uEmit, 0); resetUC();
     setTex('plain'); boundMesh = null;
   }
 
@@ -449,11 +453,18 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform3f(U.uInvS, 1 / sx, 1 / sy, 1 / sz);
   }
   let boundMesh = null;
+  // per-draw uniform state is cached so unchanged values cost no GL calls (a soldier is ~150 draws)
+  const uc = { tint: false, emit: -1, alpha: -1, flash: -1, spec: -1, r: -1, g: -1, b: -1, sx: 0, sy: 0, sz: 0, outW: -1 };
+  const resetUC = () => { uc.tint = false; uc.emit = uc.alpha = uc.flash = uc.spec = uc.r = uc.g = uc.b = uc.sx = uc.sy = uc.sz = uc.outW = -1; };
   function drawMesh(m, x, y, z, R, sx, sy, sz, col, emit = 0, alpha = 1, spec = 0, flash = 0) {
     if (boundMesh !== m) { bindMesh(m); boundMesh = m; }
     setModel(x, y, z, R || IDENT3, sx, sy, sz);
-    gl.uniform1f(U.uUseTint, 1); gl.uniform3fv(U.uTint, col);
-    gl.uniform1f(U.uEmit, emit); gl.uniform1f(U.uAlpha, alpha); gl.uniform1f(U.uFlash, flash); gl.uniform1f(U.uSpec, spec);
+    if (!uc.tint) { gl.uniform1f(U.uUseTint, 1); uc.tint = true; }
+    if (col[0] !== uc.r || col[1] !== uc.g || col[2] !== uc.b) { gl.uniform3fv(U.uTint, col); uc.r = col[0]; uc.g = col[1]; uc.b = col[2]; }
+    if (emit !== uc.emit) { gl.uniform1f(U.uEmit, emit); uc.emit = emit; }
+    if (alpha !== uc.alpha) { gl.uniform1f(U.uAlpha, alpha); uc.alpha = alpha; }
+    if (flash !== uc.flash) { gl.uniform1f(U.uFlash, flash); uc.flash = flash; }
+    if (spec !== uc.spec) { gl.uniform1f(U.uSpec, spec); uc.spec = spec; }
     gl.drawArrays(gl.TRIANGLES, 0, m.count); state.tris += m.count / 3;
     if (state.outlineW > 0 && alpha > 0.99 && emit < 0.6 && !state.inVM) {          // inverted-hull outline
       gl.cullFace(gl.FRONT); gl.uniform1f(U.uOutlineOn, 1); gl.uniform1f(U.uOutline, state.outlineW);
@@ -467,7 +478,7 @@ export function createRenderer(canvas, opts = {}) {
     setModel(x, y, z, Rm || IDENT3, sc, sc, sc);
     gl.uniform1f(U.uUseTint, 0); gl.uniform1f(U.uEmit, emit); gl.uniform1f(U.uAlpha, 1); gl.uniform1f(U.uFlash, 0); gl.uniform1f(U.uSpec, spec);
     gl.drawArrays(gl.TRIANGLES, 0, m.count); state.tris += m.count / 3;
-    gl.uniform1f(U.uUseTint, 1);
+    gl.uniform1f(U.uUseTint, 1); uc.tint = true; uc.emit = emit; uc.alpha = 1; uc.flash = 0; uc.spec = spec;
   }
   /** Set the dynamic-object look: outline width (metres, 0 = off) and rim-light strength. */
   function style(o = {}) { state.outlineW = o.outline || 0; gl.uniform1f(U.uRim, o.rim || 0); }
@@ -517,7 +528,7 @@ export function createRenderer(canvas, opts = {}) {
   function lines(data, count, col, alpha) {
     gl.uniformMatrix4fv(U.uModel, false, IDENT); gl.uniformMatrix3fv(U.uRot, false, IDENT3); gl.uniform3f(U.uInvS, 1, 1, 1);
     setTex('plain');
-    gl.uniform1f(U.uUseTint, 1); gl.uniform3fv(U.uTint, col); gl.uniform1f(U.uEmit, 1); gl.uniform1f(U.uAlpha, alpha);
+    gl.uniform1f(U.uUseTint, 1); gl.uniform3fv(U.uTint, col); gl.uniform1f(U.uEmit, 1); gl.uniform1f(U.uAlpha, alpha); resetUC();
     gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
     for (let i = 1; i < 4; i++) gl.disableVertexAttribArray(i);
     gl.vertexAttrib3f(1, 0, 1, 0); gl.vertexAttrib3f(2, 1, 1, 1); gl.vertexAttrib2f(3, 0, 0);
@@ -535,14 +546,14 @@ export function createRenderer(canvas, opts = {}) {
     gl.uniform1f(U.uFogOn, 0); gl.uniform1f(U.uShadowOn, 0);
     gl.uniform3fv(U.uCam, [0, 0, 0]);
     gl.uniform3fv(U.uSun, [0.35, 0.8, 0.55]);
-    gl.uniform1f(U.uLight, Math.max(1.0, state.theme.light) * (state.dim < 1 ? 0.85 : 1));
+    gl.uniform1f(U.uLight, Math.max(1.0, state.theme.light) * (state.dim < 1 ? 0.85 : 1)); gl.uniform1f(U.uDark, 0.95);   // the gun in your hands stays close to its old brightness so it reads against the darker world
   }
   function endViewmodel() {
     state.inVM = false; gl.uniform1f(U.uRim, 0.12); uploadLights(false);
     gl.uniformMatrix4fv(U.uVP, false, state.vp); gl.uniform1f(U.uFogOn, 1); gl.uniform1f(U.uShadowOn, shadowOk ? 1 : 0);
-    gl.uniform3fv(U.uCam, state.cam); gl.uniform3fv(U.uSun, state.theme.sun); gl.uniform1f(U.uSpec, 0); setCommonLight();
+    gl.uniform3fv(U.uCam, state.cam); gl.uniform3fv(U.uSun, state.theme.sun); gl.uniform1f(U.uSpec, 0); setCommonLight(); resetUC();
   }
-  function setCommonLight() { gl.uniform1f(U.uLight, state.theme.light * state.dim); }
+  function setCommonLight() { gl.uniform1f(U.uLight, state.theme.light * state.dim); gl.uniform1f(U.uDark, 0.8); }
 
   /** Project a world point to screen pixels (CSS-independent canvas coords). Returns null if behind the camera. */
   function project(x, y, z) {

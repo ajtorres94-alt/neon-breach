@@ -2,6 +2,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Room, cleanName } from './room.js';
@@ -49,10 +51,30 @@ function serveStatic(req, res) {
   file = path.normalize(file);
   const okDirs = [path.join(ROOT, 'client') + path.sep, path.join(ROOT, 'shared') + path.sep];
   if (!okDirs.some(d => file.startsWith(d))) { res.writeHead(403); return res.end('forbidden'); }
-  fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404); return res.end('not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
-    res.end(data);
+  sendFile(req, res, file);
+}
+// Static files are read once, compressed once (brotli + gzip for text) and answered from memory with an ETag, so repeat loads are 304s and first loads are ~4x smaller.
+const fileCache = new Map();
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.svg', '.json', '.wav']);
+function sendFile(req, res, file) {
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) { res.writeHead(404); return res.end('not found'); }
+    let e = fileCache.get(file);
+    const respond = () => {
+      const ext = path.extname(file), h = { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: e.etag, Vary: 'Accept-Encoding' };
+      if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, h); return res.end(); }
+      const ae = String(req.headers['accept-encoding'] || ''); let body = e.raw;
+      if (e.br && /\bbr\b/.test(ae)) { body = e.br; h['Content-Encoding'] = 'br'; } else if (e.gz && /\bgzip\b/.test(ae)) { body = e.gz; h['Content-Encoding'] = 'gzip'; }
+      h['Content-Length'] = body.length; res.writeHead(200, h); res.end(body);
+    };
+    if (e && e.mtime === st.mtimeMs) return respond();
+    fs.readFile(file, (err2, raw) => {
+      if (err2) { res.writeHead(404); return res.end('not found'); }
+      const ext = path.extname(file), comp = COMPRESSIBLE.has(ext) && raw.length > 1024;
+      e = { mtime: st.mtimeMs, raw, etag: '"' + crypto.createHash('sha1').update(raw).digest('base64url').slice(0, 20) + '"',
+        br: comp ? zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 6 } }) : null, gz: comp ? zlib.gzipSync(raw, { level: 6 }) : null };
+      fileCache.set(file, e); respond();
+    });
   });
 }
 const server = http.createServer(serveStatic);

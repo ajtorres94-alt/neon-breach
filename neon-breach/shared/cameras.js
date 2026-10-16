@@ -8,8 +8,8 @@ export const CAM = {
   range: 26,          // metres
   half: 0.36,         // cone half-angle (rad), about 21 degrees
   pitch: -0.42,       // tilt down toward the floor
-  amp: 0.95,          // swivel +/- radians either side of straight ahead
-  period: 7.5,        // seconds per full back-and-forth
+  amp: 0.6981,        // swivel +/- radians either side of straight ahead: 80 degrees in total
+  period: 9,          // seconds per full back-and-forth (20% slower than before)
   expose: 5,          // seconds a spotted player stays revealed
 };
 

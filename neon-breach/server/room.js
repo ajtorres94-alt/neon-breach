@@ -16,6 +16,9 @@ const r2 = (v) => Math.round(v * 100) / 100;
 const MODE_IDS = Object.keys(MODES);
 const SENTRY_W = { dmg: 9, hs: 1, rate: 9, spread: 0.03, adsSpread: 0.03, pellets: 1, range: 40, kind: 'hit' };
 
+/** Custom team name: letters, digits, spaces and a few symbols, up to 14 characters; empty = use the default name. */
+export function cleanTeamName(n) { return String(n == null ? '' : n).replace(/[^\p{L}\p{N} _.\-']/gu, '').replace(/\s+/g, ' ').trim().slice(0, 14); }
+
 export class Room {
   constructor(code, opts = {}) {
     this.code = code;
@@ -145,6 +148,7 @@ export class Room {
     if (['clear', 'rain'].includes(msg.weather)) s.weather = msg.weather;
     if (['random', 'classic'].includes(msg.items)) s.items = msg.items;
     if (['arsenal', 'tactical'].includes(msg.loadout)) s.loadout = msg.loadout;
+    if (Array.isArray(msg.teamNames)) s.teamNames = [0, 1].map(i => cleanTeamName(msg.teamNames[i]));
     this.map = getMap(s.map); this.mode = MODES[s.mode]; this.teamMode = this.mode.team;
     this.fillBots(true);
     this.pushRoom();
@@ -231,7 +235,7 @@ export class Room {
   }
 
   playerStats() {
-    return [...this.players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, bot: !!p.bot, k: p.kills, d: p.deaths, a: p.assists, cp: p.caps, rt: p.returns, sc: p.score }));
+    return [...this.players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, bot: !!p.bot, pn: p.bot ? p.bot.pers.name : '', k: p.kills, d: p.deaths, a: p.assists, cp: p.caps, rt: p.returns, sc: p.score }));
   }
 
   checkWin() {

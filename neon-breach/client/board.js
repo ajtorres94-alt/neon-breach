@@ -19,7 +19,7 @@ export function boardHTML({ players, teamMode, mode, myId, teamScore = [0, 0], w
 
   const row = (p, i, shape) => `<tr class="${p.id === myId ? 'me' : ''}${p.alive === false ? ' dead' : ''}">
     <td class="rank">${i + 1}</td>
-    <td class="who"><i class="dot" style="background:${col(p)}"></i>${shape ? `<b class="shape">${shape}</b>` : ''}${esc(p.name)}${p.bot ? ' <em>BOT</em>' : ''}</td>
+    <td class="who"><i class="dot" style="background:${col(p)}"></i>${shape ? `<b class="shape">${shape}</b>` : ''}${esc(p.name)}${p.bot ? ` <em>BOT${p.pn ? ' · ' + esc(p.pn) : ''}</em>` : ''}</td>
     ${teamMode ? '' : `<td>${p.sc}</td>`}<td>${p.k}</td>${teamMode ? `<td>${p.a}</td>` : ''}<td>${p.d}</td>${teamMode ? objCells(p) : `<td>${kd(p)}</td>`}</tr>`;
 
   if (!teamMode) {

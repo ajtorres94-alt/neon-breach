@@ -23,11 +23,23 @@ const cached = (key, make) => { const c = unit().tcache; if (!c.has(key)) c.set(
 const rbox = (hx, hy, hz, r, cell = 1e9) => cached(`rb${hx.toFixed(3)},${hy.toFixed(3)},${hz.toFixed(3)},${r.toFixed(3)},${cell}`, () => G.genRBox(hx, hy, hz, r, cell));
 const frustum = (rt, rb, seg = 14) => cached(`fr${rt.toFixed(3)},${rb.toFixed(3)},${seg}`, () => G.genFrustum(rt, rb, seg, true));
 
+const isSandWall = (b) => b.mat === 'sand' && !b.roof && b.y1 - b.y0 > 0.5 && Math.min(b.x1 - b.x0, b.z1 - b.z0) > 0.5 && (b.x1 - b.x0) * (b.z1 - b.z0) <= 40;
 const hash = (a, b) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
+
+/** Growable Float32Array with Array-style push(): building 1M+ vertices as plain number arrays cost ~8 bytes per float and a lot of GC. */
+class FBuf {
+  constructor() { this.a = new Float32Array(1 << 15); this.length = 0; }
+  push() {
+    const n = arguments.length; if (this.length + n > this.a.length) { const b = new Float32Array(Math.max(this.a.length * 2, this.length + n)); b.set(this.a); this.a = b; }
+    for (let i = 0; i < n; i++) this.a[this.length + i] = arguments[i];
+    this.length += n; return this.length;
+  }
+  done() { return this.a.slice(0, this.length); }
+}
 
 export function buildMapMesh(map) {
   const groups = {};
-  const out = (mat) => (groups[mat] ||= []);
+  const out = (mat) => (groups[mat] ||= new FBuf());
   const boxes = map.boxes;
 
   // ---- spatial hash for ambient occlusion queries
@@ -50,7 +62,10 @@ export function buildMapMesh(map) {
   }
   /** Ambient occlusion (1 = open sky, lower = enclosed) at point p with surface normal n. */
   function ao(p, n, skip) {
-    const cand = near(p[0], p[2]);
+    const all = near(p[0], p[2]);
+    if (!all.length) return 1;
+    const cand = [];                                                          // only boxes within ray range of this point can occlude it
+    for (const bi of all) { if (bi === skip) continue; const q = boxes[bi]; if (p[0] > q.x0 - AO_R && p[0] < q.x1 + AO_R && p[1] > q.y0 - AO_R && p[1] < q.y1 + AO_R && p[2] > q.z0 - AO_R && p[2] < q.z1 + AO_R) cand.push(bi); }
     if (!cand.length) return 1;
     const t1 = Math.abs(n[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
     let ax = n[1] * t1[2] - n[2] * t1[1], ay = n[2] * t1[0] - n[0] * t1[2], az = n[0] * t1[1] - n[1] * t1[0];
@@ -66,7 +81,7 @@ export function buildMapMesh(map) {
         const l = Math.hypot(dx, dy, dz); dx /= l; dy /= l; dz /= l;
       }
       let best = AO_R;
-      for (const bi of cand) { if (bi === skip) continue; const t = rayBox(ox, oy, oz, dx, dy, dz, boxes[bi]); if (t >= 0 && t < best) best = t; }
+      for (const bi of cand) { const t = rayBox(ox, oy, oz, dx, dy, dz, boxes[bi]); if (t >= 0 && t < best) best = t; }
       occ += 1 - best / AO_R; cnt++;
     }
     return 1 - AO_STRENGTH * (occ / cnt) * 1.35;
@@ -84,11 +99,11 @@ export function buildMapMesh(map) {
     return [r, g2, b];
   }
   const ORGANIC = {                                                   // dense sculpted solids; `cell` = target lattice spacing in metres
-    rock: { e: 0.6, kind: 'rock', cell: 0.09, ridge: { f: 0.8, a: 0.42, oct: 5 }, grain: { f: 8, a: 0.03 }, planes: 5, warp: 0.6, taper: 0.22, moss: 0.9 },
-    hedge: { e: 0.42, kind: 'hedge', cell: 0.16, lumps: { f: 5, a: 0.3 }, grain: { f: 14, a: 0.09 }, ridge: { f: 1.2, a: 0.12, oct: 2 }, taper: 0.06 },
-    leaf: { e: 0.82, kind: 'leaf', cell: 0.14, lumps: { f: 4.5, a: 0.34 }, grain: { f: 12, a: 0.1 }, ridge: { f: 1.0, a: 0.15, oct: 2 }, taper: 0.08 },
+    rock: { e: 0.6, kind: 'rock', cell: 0.12, ridge: { f: 0.8, a: 0.42, oct: 5 }, grain: { f: 8, a: 0.03 }, planes: 5, warp: 0.6, taper: 0.22, moss: 0.9 },
+    hedge: { e: 0.42, kind: 'hedge', cell: 0.21, lumps: { f: 5, a: 0.3 }, grain: { f: 14, a: 0.09 }, ridge: { f: 1.2, a: 0.12, oct: 2 }, taper: 0.06 },
+    leaf: { e: 0.82, kind: 'leaf', cell: 0.2, lumps: { f: 4.5, a: 0.34 }, grain: { f: 12, a: 0.1 }, ridge: { f: 1.0, a: 0.15, oct: 2 }, taper: 0.08 },
     sand: { e: 0.95, kind: 'dune', cell: 0.18, ridge: { f: 0.9, a: 0.08, oct: 3 }, grain: { f: 10, a: 0.02 }, taper: 0.4 },
-    dirt: { e: 0.8, kind: 'dirt', cell: 0.18, ridge: { f: 0.9, a: 0.1, oct: 3 }, grain: { f: 9, a: 0.03 }, taper: 0.3 } };
+    dirt: { e: 0.8, kind: 'dirt', cell: 0.24, ridge: { f: 0.9, a: 0.1, oct: 3 }, grain: { f: 9, a: 0.03 }, taper: 0.3 } };
 
   const uvFor = (mat, axis, x, y, z) => {
     const s = TEX_SCALE[mat] || 2;
@@ -102,6 +117,7 @@ export function buildMapMesh(map) {
     const mat = b.roof ? 'ceil' : b.mat in TEX_SCALE ? b.mat : 'wall', arr = out(mat);
     const vari = 0.95 + hash(bi, 7) * 0.1;
     const rr = ROUNDED[mat], org = ORGANIC[mat];
+    if (isSandWall(b)) return;                                       // drawn as stacked sandbags in the detail pass below
     if (org && Math.min(b.x1 - b.x0, b.z1 - b.z0) > 0.8 && b.y1 - b.y0 > 0.5 && !b.roof) {      // soft materials become lumpy solids that stay inside their collision box
       const hx = (b.x1 - b.x0) / 2, hy = (b.y1 - b.y0) / 2, hz = (b.z1 - b.z0) / 2, c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2];
       const seg = Math.round(Math.PI * (hx + hz) / org.cell), rings = Math.round((hy * 2 + (hx + hz) * 0.5) / org.cell);
@@ -120,7 +136,7 @@ export function buildMapMesh(map) {
       for (let i = 0; i < m.length; i += G.STRIDE) {
         const p = [m[i] + c[0], m[i + 1] + c[1], m[i + 2] + c[2]], n = [m[i + 3], m[i + 4], m[i + 5]];
         const ax = Math.abs(n[0]) > Math.abs(n[1]) && Math.abs(n[0]) > Math.abs(n[2]) ? 0 : Math.abs(n[1]) > Math.abs(n[2]) ? 1 : 2;
-        const uv = uvFor(mat, ax, p[0], p[1], p[2]), a = ao(p, n, bi) * vari, pt = patina(p, n, mat);
+        const uv = uvFor(mat, ax, p[0], p[1], p[2]), ak = (Math.round(p[0] / 0.12) * 73856093 ^ Math.round(p[1] / 0.12) * 19349663 ^ Math.round(p[2] / 0.12) * 83492791 ^ (ax * 2 + (n[ax] > 0 ? 1 : 0)) * 1013) + bi * 7919, a = (aoMemo.get(ak) ?? (aoMemo.set(ak, ao(p, n, bi)), aoMemo.get(ak))) * vari, pt = patina(p, n, mat);
         arr.push(p[0], p[1], p[2], n[0], n[1], n[2], a * pt[0], a * pt[1], a * pt[2], uv[0], uv[1]);
       }
       return;
@@ -152,6 +168,87 @@ export function buildMapMesh(map) {
   const PAINT = { rust: [0.50, 0.30, 0.18], olive: [0.30, 0.36, 0.22], blue: [0.18, 0.32, 0.55], red: [0.60, 0.18, 0.15], white: [0.75, 0.75, 0.72], yellow: [0.78, 0.62, 0.16], gray: [0.4, 0.42, 0.45] };
   const U = unit();
 
+  // ---------------------------------------------------------------- hand-built detail on top of the plain boxes
+  const strip = (mat, cx, cy, cz, sx, sy, sz, tint = [1, 1, 1], R = null, uv = 0.3) => put(mat, U.cube, [cx, cy, cz], R, [sx, sy, sz], tint, uv);
+  const rotZ = (ang) => G.rotYXZ(new Float32Array(9), 0, 0, ang), rotY = (ang) => G.rotYXZ(new Float32Array(9), ang, 0, 0);
+  let bagMesh = null;
+  /** Sandbag wall: a brick-bonded stack of squashed bags on every outer face (a core fills the inside). */
+  function sandbags(b, bi) {
+    const w = b.x1 - b.x0, d = b.z1 - b.z0, h = b.y1 - b.y0, cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
+    put('sand', rbox((w - 0.16) / 2, h / 2 - 0.02, (d - 0.16) / 2, 0.06, 1e9), [cx, b.y0 + h / 2 - 0.02, cz], null, [1, 1, 1], [0.62, 0.55, 0.42], 1);
+    bagMesh ||= G.genSphere(8, 4);
+    const bl = 0.58, bh = 0.2, bt = 0.34, rows = Math.max(1, Math.round(h / (bh * 0.88))), pitch = h / rows;
+    const alongX = w >= d, L = alongX ? w : d, T = alongX ? d : w, nL = Math.max(1, Math.round(L / bl)), segL = L / nL, nT = Math.max(1, Math.round(T / bt));
+    for (let r = 0; r < rows; r++) {
+      const y = b.y0 + pitch * (r + 0.5), stag = r % 2;
+      for (let side = 0; side < 2; side++) {
+        const sg = side ? 1 : -1;
+        for (let i = 0; i < nL; i++) {
+          const u = -L / 2 + segL * (i + 0.5) + (stag ? segL * 0.25 : -segL * 0.25) * (i === 0 || i === nL - 1 ? 0 : 1);
+          const jit = hash(bi * 13 + r, i * 7 + side), t = sg * (T / 2 - bt * 0.5 + 0.02);
+          const p = alongX ? [cx + u, y, cz + t] : [cx + t, y, cz + u], yaw = (jit - 0.5) * 0.18 + (alongX ? 0 : Math.PI / 2), sc = 0.92 + jit * 0.16, tone = 0.88 + hash(i + r * 3, bi) * 0.2;
+          put('sand', bagMesh, p, rotY(yaw), [segL * 0.54 * sc, pitch * 0.62, bt * 0.56 * sc], [tone, tone * 0.97, tone * 0.9], 1.6);
+        }
+      }
+      for (let side = 0; side < 2; side++) {
+        const sg = side ? 1 : -1;
+        for (let i = 0; i < nT; i++) {
+          const v = -T / 2 + (T / nT) * (i + 0.5), jit = hash(bi * 5 + r, i + side * 9), e = sg * (L / 2 - bt * 0.5 + 0.02), p = alongX ? [cx + e, y, cz + v] : [cx + v, y, cz + e];
+          put('sand', bagMesh, p, rotY((jit - 0.5) * 0.18 + (alongX ? Math.PI / 2 : 0)), [(T / nT) * 0.56, pitch * 0.62, bt * 0.56], [0.9, 0.87, 0.8], 1.6);
+        }
+      }
+    }
+  }
+  const WALLISH = new Set(['wall', 'concrete', 'brick', 'stone', 'marble']), CORR = new Set(['metal', 'rust', 'olive', 'blue', 'red']);
+  boxes.forEach((b, bi) => {
+    if (b.vis === false || b.roof || b.st || b.y1 - b.y0 < 0.6) return;
+    const mat = b.mat in TEX_SCALE ? b.mat : 'wall', w = b.x1 - b.x0, d = b.z1 - b.z0, h = b.y1 - b.y0, cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, tone = 0.82 + hash(bi, 3) * 0.1;
+    if (isSandWall(b)) { sandbags(b, bi); return; }
+    if (mat === 'crate' && Math.min(w, d) >= 0.9 && h <= 3.2) {
+      // timber crate: corner posts, top/bottom rails, diagonal braces and steel corner brackets on every face
+      const px = 0.12, out = 0.03, tw = [tone * 0.8, tone * 0.72, tone * 0.62];
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) strip('crate', cx + sx * (w / 2 - px / 2 + out), b.y0 + h / 2, cz + sz * (d / 2 - px / 2 + out), px, h + 0.02, px, tw, null, 0.4);
+      for (const [fx, fz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        const alongX = fz !== 0, fw = alongX ? w : d, px0 = cx + fx * (w / 2 + out * 0.6), pz0 = cz + fz * (d / 2 + out * 0.6), len = fw - px * 1.2;
+        for (const yy of [b.y0 + 0.07, b.y1 - 0.07]) strip('crate', px0, yy, pz0, alongX ? len : 0.07 + out, 0.12, alongX ? 0.07 + out : len, tw, null, 0.4);
+        const bl = Math.hypot(len, h - 0.3), ang = Math.atan2(h - 0.3, len);
+        strip('crate', px0, b.y0 + h / 2, pz0, alongX ? bl : 0.05 + out, 0.1, alongX ? 0.05 + out : bl, tw.map(c => c * 0.97), alongX ? rotZ(ang * (fz > 0 ? 1 : -1)) : G.rotYXZ(new Float32Array(9), Math.PI / 2, 0, ang * (fx > 0 ? -1 : 1)), 0.4);
+        for (const yy of [b.y0 + 0.14, b.y1 - 0.14]) for (const sg of [-1, 1]) strip('plain', alongX ? px0 + sg * (w / 2 - 0.13) : px0, yy, alongX ? pz0 : pz0 + sg * (d / 2 - 0.13), alongX ? 0.16 : 0.05, 0.16, alongX ? 0.05 : 0.16, [0.3, 0.3, 0.32], null, 0.2);
+      }
+    } else if (CORR.has(mat) && Math.max(w, d) >= 2.4 && Math.max(w, d) <= 22 && h >= 1.4 && Math.min(w, d) <= 6) {
+      // corrugated sheet metal: vertical ribs every 0.24 m on the long faces, frame rails and corner castings
+      const alongX = w >= d, L = alongX ? w : d, T = alongX ? d : w, n = Math.floor((L - 0.3) / 0.24);
+      for (let sg = -1; sg <= 1; sg += 2) for (let i = 0; i < n; i++) {
+        const u = -L / 2 + 0.15 + (L - 0.3) * (i + 0.5) / n, t = sg * (T / 2 + 0.012);
+        strip(mat, alongX ? cx + u : cx + t, b.y0 + h / 2, alongX ? cz + t : cz + u, alongX ? 0.1 : 0.03, h - 0.28, alongX ? 0.03 : 0.1, [tone, tone, tone], null, 0.5);
+      }
+      for (let sg = -1; sg <= 1; sg += 2) for (const yy of [b.y0 + 0.07, b.y1 - 0.07]) strip('plain', alongX ? cx : cx + sg * (T / 2 + 0.02), yy, alongX ? cz + sg * (T / 2 + 0.02) : cz, alongX ? L + 0.02 : 0.05, 0.14, alongX ? 0.05 : L + 0.02, [0.2, 0.2, 0.21], null, 0.1);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const yy of [b.y0 + 0.08, b.y1 - 0.08]) strip('plain', cx + sx * (w / 2 - 0.08), yy, cz + sz * (d / 2 - 0.08), 0.2, 0.17, 0.2, [0.12, 0.12, 0.13], null, 0.1);
+    } else if (WALLISH.has(mat) && Math.max(w, d) >= 1 && h >= 1.8) {
+      // masonry trim: skirting, cornice cap, and vertical panel joints on long faces
+      const cap = Math.min(b.y1, 12) - 0.06;
+      for (const [fx, fz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        const alongX = fz !== 0, L = alongX ? w : d, p0x = cx + fx * w / 2, p0z = cz + fz * d / 2, o = 0.035, sx = alongX ? L : o * 2, sz = alongX ? o * 2 : L;
+        if (b.y0 < 0.3) strip(mat, p0x, b.y0 + 0.09, p0z, sx + (alongX ? 0.06 : 0), 0.18, sz + (alongX ? 0 : 0.06), [tone * 0.86, tone * 0.86, tone * 0.88], null, 0.8);
+        strip(mat, p0x, cap, p0z, sx + (alongX ? 0.1 : 0), 0.12, sz + (alongX ? 0 : 0.1), [tone * 1.04, tone * 1.04, tone * 1.04], null, 0.8);
+        strip(mat, p0x, cap - 0.1, p0z, sx, 0.05, sz, [tone * 0.8, tone * 0.8, tone * 0.82], null, 0.5);
+        const nj = Math.floor(L / 2.4);
+        if (L > 3.6 && h > 2.4) for (let k = 1; k < nj; k++) {
+          const u = -L / 2 + k * (L / nj);
+          strip('plain', alongX ? cx + u : p0x, b.y0 + h / 2, alongX ? p0z : cz + u, alongX ? 0.035 : 0.03, h - 0.4, alongX ? 0.03 : 0.035, [0.28, 0.28, 0.29], null, 0.1);
+        }
+      }
+    } else if (mat === 'wood' && Math.max(w, d) >= 1.2 && h >= 0.8) {
+      // plank gaps and fence posts
+      const alongX = w >= d, L = alongX ? w : d, T = alongX ? d : w, n = Math.floor(L / 0.2);
+      for (let sg = -1; sg <= 1; sg += 2) for (let i = 1; i < n; i++) {
+        const u = -L / 2 + L * i / n, t = sg * (T / 2 + 0.004);
+        strip('plain', alongX ? cx + u : cx + t, b.y0 + h / 2, alongX ? cz + t : cz + u, alongX ? 0.012 : 0.01, h - 0.04, alongX ? 0.01 : 0.012, [0.12, 0.09, 0.06], null, 0.1);
+      }
+      for (const e of [-1, 1]) strip('wood', alongX ? cx + e * (L / 2 - 0.05) : cx, b.y0 + h / 2 + 0.05, alongX ? cz : cz + e * (L / 2 - 0.05), alongX ? 0.14 : T + 0.06, h + 0.1, alongX ? T + 0.06 : 0.14, [tone * 0.85, tone * 0.78, tone * 0.7], null, 0.5);
+    }
+  });
+
   const treeCache = new Map();
   const DECOR = {
     tree(d) {
@@ -180,11 +277,33 @@ export function buildMapMesh(map) {
         put('plain', U.cyl, L(sx * 1.04, 0.36, sz * 1.3), WR, [0.2, 0.05, 0.2], [0.5, 0.5, 0.52]);
       }
       for (const sx of [1, -1]) put('plain', U.sphere, L(sx * 0.6, 0.72, 2.12), R, [0.14, 0.1, 0.06], [1, 0.95, 0.7]);
+      // detail: pillars, door seams + handles, mirrors, grille, lamps, plate, wheel arches, tyres with rims and lug nuts
+      const dk = [0.05, 0.05, 0.06], strip = (c, sx, sy, sz, tint, rr = null) => put('plain', U.cube, c, R, [sx, sy, sz], tint);
+      for (const sx of [1, -1]) for (const sz of [-1, 1]) strip(L(sx * 0.8, 1.42, -0.15 + sz * 0.98), 0.07, 0.34, 0.08, col.map(c => c * 0.8));
+      for (const sx of [1, -1]) {
+        for (const z of [0.55, -0.55, -1.3]) strip(L(sx * 0.955, 0.8, z), 0.015, 0.5, 0.025, dk);
+        for (const z of [0.4, -0.7]) strip(L(sx * 0.97, 0.9, z), 0.025, 0.03, 0.18, [0.6, 0.6, 0.62]);
+        put('plain', rbox(0.05, 0.07, 0.11, 0.03), L(sx * 1.05, 1.0, 0.62), R, [1, 1, 1], col);                       // mirror
+        strip(L(sx * 0.62, 0.74, 2.14), 0.3, 0.1, 0.04, [0.85, 0.8, 0.6]);                                              // lamp lens
+        put('glow', U.cube, L(sx * 0.62, 0.74, -2.14), R, [0.3, 0.09, 0.03], [0.9, 0.1, 0.08], 0.2);                  // tail lamp
+        for (const sz of [1, -1]) {
+          const wp = L(sx * 0.9, 0.36, sz * 1.3), WR = G.alignY(new Float32Array(9), R[0], 0, R[2]);
+          put('plain', U.cyl, wp, WR, [0.46, 0.03, 0.46], [0.02, 0.02, 0.025]);                                          // arch shadow
+          for (let k = 0; k < 5; k++) { const a = k / 5 * 6.283, q = L(sx * 1.07, 0.36 + Math.sin(a) * 0.13, sz * 1.3 + Math.cos(a) * 0.13); put('plain', U.sphere, q, R, [0.025, 0.025, 0.025], [0.75, 0.75, 0.78]); }
+        }
+      }
+      strip(L(0, 0.55, 2.18), 0.8, 0.14, 0.04, dk);                                                                       // grille
+      strip(L(0, 0.55, 2.2), 0.7, 0.012, 0.03, [0.5, 0.5, 0.52]); strip(L(0, 0.6, 2.2), 0.7, 0.012, 0.03, [0.5, 0.5, 0.52]);
+      strip(L(0, 0.5, -2.18), 0.34, 0.11, 0.025, [0.85, 0.85, 0.8]);                                                      // plate
+      put('plain', rbox(0.9, 0.05, 0.6, 0.04), L(0, 0.92, 1.45), R, [1, 1, 1], col.map(c => c * 0.92));                  // hood crease
     },
     barrel(d) {
       const y = d.y || 0, h = d.h || 0.95, rad = 0.33, mat = d.mat || 'red';
       put(mat, U.cyl, [d.x, y + h / 2, d.z], null, [rad, h, rad], [1, 1, 1], 1);
       for (const f of [0.22, 0.78]) put('plain', U.cyl, [d.x, y + h * f, d.z], null, [rad + 0.012, 0.045, rad + 0.012], [0.15, 0.15, 0.16]);
+      for (const f of [0.5, 0.36, 0.64]) put('plain', U.cyl, [d.x, y + h * f, d.z], null, [rad + 0.008, 0.02, rad + 0.008], [0.22, 0.22, 0.24]);
+      put('plain', U.cyl, [d.x, y + h + 0.01, d.z], null, [rad * 0.96, 0.03, rad * 0.96], [0.2, 0.2, 0.22]);
+      put('plain', U.cyl, [d.x + 0.13, y + h + 0.03, d.z], null, [0.045, 0.03, 0.045], [0.5, 0.5, 0.52]);
     },
     lamp(d) {
       const h = d.h || 5;
@@ -230,6 +349,17 @@ export function buildMapMesh(map) {
         put('plain', U.cyl, [x - s * 1.6, 0.5, z + sz * 1.0], G.alignY(new Float32Array(9), 0, 0, 1), [0.5, 0.34, 0.5], dark);
       }
       put('plain', U.cyl, [x - s * 1.7, 1.55, z], null, [0.07, 0.8, 0.07], [0.1, 0.1, 0.1]);                      // exhaust
+      // detail: grille bars, headlamps, cab pillars, seat, steering wheel, rear-wheel lugs, hubs, wing guards
+      for (let k = 0; k < 6; k++) put('plain', U.cube, [x + s * 2.27, 0.78 + k * 0.1, z], null, [0.03, 0.05, 1.5], [0.08, 0.1, 0.08]);
+      for (const sz of [1, -1]) {
+        put('glow', U.sphere, [x + s * 2.3, 1.1, z + sz * 0.7], null, [0.09, 0.09, 0.09], [1, 0.95, 0.7], 0.2);
+        for (const sx of [-1, 1]) put('plain', U.cube, [x + s * (0.8 + sx * 0.42), 2.05, z + sz * 0.85], null, [0.06, 0.6, 0.06], green.map(c => c * 0.8));
+        put('plain', rbox(0.5, 0.05, 0.28, 0.03), [x - s * 1.6, 0.98, z + sz * 1.0], null, [1, 1, 1], green.map(c => c * 0.9));      // rear wing guard
+        for (let k = 0; k < 14; k++) { const a = k / 14 * 6.283; put('plain', U.cube, [x - s * 1.6 + Math.cos(a) * 0.5, 0.5 + Math.sin(a) * 0.5, z + sz * 1.0], G.rotYXZ(new Float32Array(9), 0, 0, a), [0.08, 0.06, 0.32], dark); }
+        for (const [px, py, r2] of [[x + s * 1.3, 0.85, 0.2], [x - s * 1.6, 0.5, 0.15]]) put('plain', U.cyl, [px, py, z + sz * (r2 > 0.18 ? 1.62 : 1.2)], G.alignY(new Float32Array(9), 0, 0, 1), [r2, 0.04, r2], [0.3, 0.3, 0.32]);
+      }
+      put('plain', rbox(0.2, 0.05, 0.2, 0.03), [x + s * 0.5, 1.45, z], null, [1, 1, 1], [0.08, 0.08, 0.09]);                // seat
+      put('plain', U.cyl, [x + s * 1.15, 1.45, z], G.rotYXZ(new Float32Array(9), 0, 0.4, 0), [0.17, 0.02, 0.17], [0.1, 0.1, 0.11]);   // steering wheel
     },
     heli(d) {                                                           // downed helicopter around the collision boxes at the crater
       const x = d.x, z = d.z, olive = [0.30, 0.34, 0.22], dark = [0.09, 0.09, 0.1];
@@ -253,5 +383,6 @@ export function buildMapMesh(map) {
   for (const d of map.decor || []) { const f = DECOR[d.k]; if (f) f(d); }
   scatterClutter(map, { put, rbox: (hx, hy, hz, r) => cached(`cb${hx.toFixed(3)},${hy.toFixed(3)},${hz.toFixed(3)},${r.toFixed(3)}`, () => G.genRBox(hx, hy, hz, r, 1e9, true)), frustum, U, boxes, near });
 
+  for (const k of Object.keys(groups)) groups[k] = groups[k].done();
   return groups;
 }

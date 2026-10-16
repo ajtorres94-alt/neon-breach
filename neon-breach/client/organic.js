@@ -10,7 +10,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const sp = (v, p) => Math.sign(v) * Math.pow(Math.abs(v), p);
 
 /** Global detail multiplier for lattice resolution (0.5 = half, 1 = default, 1.5 = extra). Settable from the page: localStorage nb.detail. */
-export const DETAIL = { v: typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 8) < 4 ? 0.6 : 1 };
+export const DETAIL = { v: typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 8) < 4 ? 0.55 : 0.8 };
 try { const s = typeof localStorage !== 'undefined' && parseFloat(localStorage.getItem('nb.detail')); if (s > 0.2 && s < 3) DETAIL.v = s; } catch { /* storage blocked */ }
 
 export function rng(seed) { let s = (seed * 2654435761 + 12345) >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }

@@ -111,7 +111,7 @@ export const GUNS = {
     L([[0, 0.03, -0.6, 0.0105, 0.0105, 2], [0, 0.03, -0.64, 0.0148, 0.0148, 2], [0, 0.03, -0.67, 0.0148, 0.0148, 2]], 'd'),   // A2 flash hider
     zl('d', 0, 0.1, -0.115, -0.18, 0.0145, 0.0145, 0.0145, 0.0145, 2, 0.1, 3), zl('d', 0, 0.1, -0.18, -0.2, 0.018, 0.018, 0.018, 0.018, 2, 0.1, 2),   // red-dot tube + objective bell
     B(0, 0.082, -0.15, 0.022, 0.016, 0.07, 'd', 0.006), T(0, 0.1, -0.2, 0, 0.1, -0.201, 0.015, 'l'), T(0, 0.1, -0.12, 0, 0.1, -0.122, 0.006, 'r'),
-    B(0, 0.065, -0.52, 0.012, 0.055, 0.02, 'd', 0.003), B(0, 0.04, -0.52, 0.026, 0.026, 0.04, 'm', 0.008),
+    B(0, 0.04, -0.52, 0.026, 0.026, 0.04, 'm', 0.008),
     vl('m', [0, -0.037, -0.095], [0, -0.176, -0.118], 0.0165, 0.0285, 0.0175, 0.0295, 4.2, -0.02), zl('d', 0, -0.179, -0.085, -0.15, 0.0185, 0.004, 0.0185, 0.004, 3, -0.179, 2),   // STANAG magazine + base plate
     vl('p', [0, -0.012, 0.028], [0, -0.118, 0.072], 0.0145, 0.021, 0.0165, 0.023, 2.4, 0, 6),         // A2 pistol grip
     W([[0, 0.003, -0.02, 0.0035], [0, -0.014, -0.03, 0.0035], [0, -0.025, -0.07, 0.0035], [0, -0.016, -0.106, 0.0035], [0, 0.0, -0.11, 0.0035]], 'd'),   // trigger guard
@@ -201,7 +201,7 @@ const flashhider = (a, y, z0, len, r, n = 6) => { a.push(T(0, y, z0, 0, y, z0 - 
 const trig = (a, y, z, len = 0.07, c = 'd') => { a.push(B(0, y - 0.034, z - len / 2, 0.006, 0.004, len, c, 0.0015), B(0, y - 0.018, z - len, 0.006, 0.034, 0.004, c, 0.0015), B(0, y - 0.017, z - 0.002, 0.006, 0.03, 0.004, c, 0.0015), B(0, y - 0.016, z - len * 0.4, 0.005, 0.024, 0.004, c, 0.001, 0.3), B(0, y - 0.006, z - len * 0.4 + 0.004, 0.005, 0.01, 0.005, 'm', 0.001)); };
 /** Visible brass rounds in a translucent magazine (side by side column of small cylinders). */
 const rounds = (a, x, ytop, ybot, z, n, r = 0.0055) => { for (let i = 0; i < n; i++) { const y = ytop + (ybot - ytop) * (i + 0.5) / n; a.push(T(x - 0.007, y, z, x + 0.007, y, z, r, 'g'), T(x + 0.007, y, z, x + 0.0085, y, z, r * 0.7, 'm')); } };
-const sight = (a, y, z, h = 0.02, w = 0.004) => { a.push(B(0, y + h / 2, z, w, h, 0.006, 'd', 0.0008), B(0, y + h - 0.002, z - 0.0015, w * 0.6, 0.004, 0.003, 'w', 0.0004)); };
+const sight = () => {};                                                                                  // (the old extra front sights near the barrel are gone: every gun uses the default iron-sight pair added below)
 const rear = (a, y, z, w = 0.026) => { a.push(B(0, y, z, w, 0.006, 0.014, 'd', 0.001), B(-w * 0.35, y + 0.008, z, 0.004, 0.012, 0.01, 'd', 0.0008), B(w * 0.35, y + 0.008, z, 0.004, 0.012, 0.01, 'd', 0.0008), B(0, y + 0.0046, z + 0.004, 0.006, 0.003, 0.002, 'w', 0.0004)); };
 const butt = (a, y, z, h, w = 0.04) => { a.push(B(0, y, z, w, h, 0.016, 'p', 0.004)); for (let i = 0; i < 6; i++) a.push(B(0, y - h * 0.4 + h * 0.8 * i / 5, z + 0.0085, w * 0.9, 0.002, 0.002, 'd', 0.0005)); };
 const sling = (a, x, y, z) => { a.push(T(x - 0.006, y, z, x + 0.006, y, z, 0.006, 'm'), T(x - 0.006, y + 0.007, z, x + 0.006, y + 0.007, z, 0.003, 'd')); };
@@ -275,7 +275,6 @@ D.mp5 = (a) => {
   for (let i = 0; i < 3; i++) a.push(T(0, 0.03, -0.4 - i * 0.03, 0, 0.03, -0.405 - i * 0.03, 0.0105, 'm'));
   a.push(T(-0.011, 0.062, -0.03, -0.011, 0.073, -0.03, 0.002, 'd'), T(0.011, 0.062, -0.03, 0.011, 0.073, -0.03, 0.002, 'd'));       // rear drum sight cranks
   for (let i = 0; i < 4; i++) a.push(B(0, 0.0705 + i * 0.0, -0.03 + 0.0, 0.0, 0.0, 0.0, 'd', 0));
-  sight(a, 0.057, -0.405, 0.012, 0.0045); a.push(T(0, 0.062, -0.403, 0, 0.062, -0.4, 0.014, 'd'));
   a.push(B(-0.0245, 0.03, -0.005, 0.004, 0.014, 0.05, 'd', 0.001), T(-0.0235, 0.037, -0.06, -0.0235 - 0.024, 0.037, -0.06, 0.0045, 'd'), E(-0.0235 - 0.027, 0.037, -0.06, 0.009, 0.009, 0.009, 'd'));   // charging handle
   trig(a, 0.012, 0.0, 0.07); pin(a, 0.0225, 0.0, -0.04); pin(a, 0.0225, 0.04, 0.03);
   a.push(B(0.0235, 0.012, 0.0, 0.003, 0.012, 0.016, 'm', 0.0008), B(-0.022, 0.0, 0.01, 0.004, 0.016, 0.03, 'm', 0.001, 0.2));   // selector, mag catch
@@ -340,7 +339,7 @@ D.m4 = (a) => {
   ribs(a, 0, 0.03, -0.215, -0.485, 9, 0.0325, 'm');
   for (let i = 0; i < 8; i++) for (const an of [0.5, 1.9, 4.4, 5.8]) a.push(B(Math.cos(an) * 0.03, 0.03 + Math.sin(an) * 0.03, -0.235 - i * 0.032, 0.004, 0.004, 0.01, 'd', 0.0007));   // heat-shield vent holes
   flashhider(a, 0.03, -0.655, 0.0, 0.0148, 6); a.push(T(0, 0.03, -0.63, 0, 0.03, -0.655, 0.0148, 'd'), T(0, 0.03, -0.6, 0, 0.03, -0.63, 0.0105, 'd'));
-  a.push(B(0, 0.09, -0.52, 0.01, 0.06, 0.012, 'd', 0.002), B(0, 0.125, -0.52, 0.0045, 0.02, 0.005, 'd', 0.001), B(0, 0.0735, -0.52, 0.028, 0.012, 0.042, 'd', 0.003), T(0, 0.05, -0.52, 0, 0.0765, -0.52, 0.0075, 'd'));  // front sight tower
+  // (front sight tower removed: the default front post is used)
   a.push(T(0, 0.03, -0.55, 0, 0.03, -0.56, 0.0155, 'd'), T(0, 0.03, -0.575, 0, 0.03, -0.585, 0.0155, 'd'));
   a.push(B(0, 0.095, 0.0, 0.03, 0.028, 0.02, 'd', 0.005), B(0, 0.105, 0.0, 0.016, 0.004, 0.016, 'd', 0.002), B(0, 0.082, -0.055, 0.016, 0.008, 0.012, 'd', 0.002), T(0.0, 0.092, 0.0, 0.0, 0.092, -0.01, 0.007, 'l'));    // flip-up rear sight
   a.push(B(0, 0.101, -0.15, 0.014, 0.004, 0.06, 'd', 0.001), B(0.014, 0.1, -0.15, 0.003, 0.02, 0.05, 'd', 0.001), B(-0.014, 0.1, -0.15, 0.003, 0.02, 0.05, 'd', 0.001), B(0, 0.116, -0.15, 0.006, 0.003, 0.012, 'r', 0.0005), B(0, 0.092, -0.185, 0.03, 0.006, 0.01, 'd', 0.002));   // optic hood + dot window + mount
@@ -411,7 +410,7 @@ D.mossberg = (a) => {
   a.push(B(0.0203, 0.022, -0.1, 0.002, 0.016, 0.07, 'm', 0.0006), B(0.0206, 0.022, -0.065, 0.002, 0.012, 0.012, 'd', 0.0006), B(0.0206, 0.0, -0.1, 0.002, 0.022, 0.05, 'd', 0.0006));        // ejection port + lifter
   for (let i = 0; i < 5; i++) a.push(B(0, 0.054, -0.01 + 0.0 - i * 0.0, 0.0, 0.0, 0.0, 'd', 0.0));
   a.push(B(0, 0.054, -0.02, 0.016, 0.01, 0.06, 'd', 0.002), B(0, 0.062, -0.07, 0.004, 0.006, 0.004, 'm', 0.0005));
-  a.push(B(0, 0.054, 0.0 + 0.0, 0.016, 0.006, 0.06, 'm', 0.0008), B(0, 0.074, -0.77, 0.004, 0.014, 0.01, 'd', 0.001), B(0, 0.065, -0.77, 0.022, 0.006, 0.014, 'd', 0.0015), B(0, 0.062, -0.776, 0.006, 0.01, 0.006, 'r', 0.0008));    // bead sight
+  a.push(B(0, 0.054, 0.0 + 0.0, 0.016, 0.006, 0.06, 'm', 0.0008));
   a.push(B(0.0, -0.035, -0.01, 0.01, 0.002, 0.08, 'd', 0.0006), B(0.0, -0.024, -0.05, 0.034, 0.014, 0.07, 'd', 0.003), B(0.0, -0.034, -0.01, 0.004, 0.034, 0.003, 'd', 0.001));
   trig(a, 0.0, 0.03, 0.07); a.push(B(0.0, 0.037, -0.055, 0.013, 0.003, 0.018, 'm', 0.0008));
   a.push(B(-0.0206, 0.033, -0.03, 0.002, 0.012, 0.028, 'd', 0.0006), B(0, 0.044, 0.08, 0.016, 0.01, 0.034, 'd', 0.002));  // tang safety
@@ -518,7 +517,7 @@ for (const [id, gun] of Object.entries(GUNS)) {
   for (const p of a) { if (!p || typeof p !== 'object' || (p.k === 'b' && !(p.sx > 0 && p.sy > 0 && p.sz > 0)) || (p.k === 't' && !(p.r > 0)) || (p.k !== 'b' && p.k !== 't' && p.k !== 'e')) continue; gun.parts.push(p); }
 }
 
-// ---- default iron sights: every gun gets a rear notch and a front post standing clear of everything between them (so the line of sight is never
+// ---- default iron sights: every gun gets a rear notch (the front sight at the muzzle was removed) standing clear of everything between them (so the line of sight is never
 // blocked by the receiver, an optic housing or a handguard). gun.ads gives the viewmodel offset that lines that sight picture up with the eye.
 for (const gun of Object.values(GUNS)) {
   if (gun.id === 'sniper') { gun.ads = { y: 0.1, z: 0.0 }; continue; }       // scope overlay replaces the model when aiming
@@ -531,9 +530,7 @@ for (const gun of Object.values(GUNS)) {
   }
   const tip = top + 0.012, add = [];
   for (const s of [-1, 1]) add.push(B(s * 0.0068, (tip + top - 0.02) / 2, rz, 0.003, tip - top + 0.02, 0.012, 'd', 0.0008), B(s * 0.0068, tip - 0.002, rz + 0.0025, 0.003, 0.004, 0.003, 'w', 0.0003));   // rear notch posts
-  add.push(B(0, top - 0.01, rz, 0.02, 0.004, 0.012, 'd', 0.001), B(0, (0.03 + top) / 2 - 0.004, rz, 0.02, top - 0.03 - 0.008, 0.012, 'd', 0.002), B(0, (0.03 + top) / 2 - 0.006, fz + 0.002, 0.009, top - 0.03 - 0.012, 0.012, 'd', 0.002));   // sight bases so nothing floats
-  add.push(B(0, (tip + top - 0.02) / 2, fz, 0.0035, tip - top + 0.02, 0.01, 'd', 0.0008), B(0, tip - 0.001, fz - 0.002, 0.0022, 0.004, 0.003, 'w', 0.0003));          // front post + bead
-  add.push(B(-0.0072, (tip + top - 0.02) / 2, fz, 0.0025, tip - top + 0.008, 0.009, 'd', 0.0006), B(0.0072, (tip + top - 0.02) / 2, fz, 0.0025, tip - top + 0.008, 0.009, 'd', 0.0006), B(0, tip - 0.0015, fz, 0.0165, 0.0025, 0.009, 'd', 0.0006));   // front sight hood
+  add.push(B(0, top - 0.01, rz, 0.02, 0.004, 0.012, 'd', 0.001), B(0, (0.03 + top) / 2 - 0.004, rz, 0.02, top - 0.03 - 0.008, 0.012, 'd', 0.002));   // rear sight base
   for (const p of add) gun.parts.push(p);
   gun.ads = { y: tip - 0.002, z: rz };
 }
@@ -619,12 +616,13 @@ function bakeGroup(gun, group, accent, gold, nParts) {
  */
 export function drawGun(R, gun, o) {
   const { origin, yaw = 0, pitch = 0, roll = 0, accent = [0.5, 0.5, 0.5], far = false, scale = 1 } = o, gold = !!gun.gold || !!o.gold;
-  const n = far ? gun.nBase : o.mid ? gun.nDetail : gun.parts.length, rot = R.rotate(yaw, pitch, roll);
-  const key = `gun:${gun.id}:${gold ? 'g' : accent.map(v => Math.round(v * 20)).join('.')}:${far ? 0 : o.mid ? 2 : 1}`;
+  const smooth = !!o.smooth, n = far ? gun.nBase : o.mid ? gun.nDetail : gun.parts.length, rot = R.rotate(yaw, pitch, roll);
+  const key = `gun:${gun.id}:${gold ? 'g' : accent.map(v => Math.round(v * 20)).join('.')}:${far ? 0 : o.mid ? 2 : 1}${smooth ? 's' : ''}`;
   for (const [name, spec, emit] of GROUPS) {
+    if (smooth && name === 'micro') continue;                       // held gun: no scattered speckle parts
     const mesh = R.loftMesh(`${key}:${name}`, () => bakeGroup(gun, name, accent, gold, n));
     if (!mesh || !mesh.count) continue;
-    R.texture(name === 'glow' || name === 'micro' ? 'plain' : name, 1);
+    R.texture(name === 'glow' || name === 'micro' ? 'plain' : smooth && /^gun|^poly/.test(name) ? name + 'S' : name, 1);
     R.drawBaked(mesh, origin[0], origin[1], origin[2], rot, gold ? 1.1 : spec, gold && name === 'plain' ? 0.25 : emit, scale);
   }
   R.texture('plain');

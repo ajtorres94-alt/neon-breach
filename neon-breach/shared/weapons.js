@@ -94,7 +94,7 @@ export const MODES = {
 };
 
 export const DEFAULT_SETTINGS = {
-  map: 'foundry', mode: 'dm', limit: 30, time: 480, bots: 0, weather: 'clear', items: 'random', loadout: 'arsenal',
+  map: 'foundry', mode: 'dm', limit: 30, time: 480, bots: 0, weather: 'clear', items: 'random', loadout: 'arsenal', teamNames: ['', ''],
 };
 
 export const MAX_PLAYERS = 8;

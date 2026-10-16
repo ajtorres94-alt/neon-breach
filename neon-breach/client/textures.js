@@ -5,7 +5,7 @@
 export const TEX_SCALE = {          // metres per texture tile
   floor: 3, wall: 2.4, metal: 2.4, crate: 1.2, accent: 2.4, marble: 3, stone: 2.2, rock: 1.6, grass: 3, hedge: 1.4, dark: 3,
   glow: 2, asphalt: 4, sand: 1.2, brick: 2.0, wood: 2.2, rust: 2.4, concrete: 3.2, olive: 2.4, blue: 2.4, red: 2.4,
-  dirt: 3.2, hay: 1.5, leaf: 1.6, plain: 1, fabric: 0.5, camoWood: 1, camoDesert: 1, camoUrban: 1, camoMulti: 1, skin: 1, gunmetal: 1, polymer: 1, gunwood: 1,
+  dirt: 3.2, hay: 1.5, leaf: 1.6, plain: 1, fabric: 0.5, camoWood: 1, camoDesert: 1, camoUrban: 1, camoMulti: 1, skin: 1, gunmetal: 1, polymer: 1, gunwood: 1, gunmetalS: 1, polymerS: 1, gunwoodS: 1,
 };
 
 // ---------------------------------------------------------------- noise helpers (all tileable)
@@ -290,41 +290,57 @@ GEN.gunwood = (u, v) => {                                                  // wa
   return [0.4 * k * (0.92 + fine * 0.16), 0.235 * k * (0.92 + fine * 0.16), 0.125 * k * (0.92 + fine * 0.16), line * 0.3];
 };
 
+// Smooth variants used on the gun in your hands: the same colours, but a soft satin finish with no stipple, grain bump or noise speckle.
+GEN.gunmetalS = (u, v) => { const n = fbm(u, v, 2, 2, 353), k = 0.84 + (n - 0.5) * 0.04; return [k, k * 1.01, k * 1.04, 0]; };
+GEN.polymerS = (u, v) => { const n = fbm(u, v, 2, 2, 361), k = 0.94 + (n - 0.5) * 0.03; return [k, k, k * 1.015, 0]; };
+GEN.gunwoodS = (u, v) => {
+  const g = fbm(u * 0.8, v * 0.25, 2, 2, 371), line = Math.sin((u * 14 + g * 3) * Math.PI), k = 0.84 + line * 0.025 + (g - 0.5) * 0.12;
+  return [0.34 * k, 0.205 * k, 0.12 * k, 0];
+};
+
 // ---------------------------------------------------------------- baking
 function bake(size, fn, bump, paintOverride) {
   const N = size * size, col = new Float32Array(N * 3), hgt = new Float32Array(N);
+  const inv = 1 / size;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const o = fn((x + 0.5) / size, (y + 0.5) / size), i = y * size + x;
+    const o = fn((x + 0.5) * inv, (y + 0.5) * inv), i = y * size + x;
     col[i * 3] = o[0]; col[i * 3 + 1] = o[1]; col[i * 3 + 2] = o[2]; hgt[i] = o[3];
   }
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const ctx = cv.getContext('2d'), img = ctx.createImageData(size, size), d = img.data;
-  const at = (x, y) => hgt[((y + size) % size) * size + ((x + size) % size)];
   const paint = paintOverride !== undefined ? paintOverride : bump > 0;
-  if (paint) for (let pass = 0; pass < 2; pass++) {                  // soften the relief so surfaces read as painted, not gritty
-    const src = hgt.slice();
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      let sum = 0; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) sum += src[((y + oy + size) % size) * size + ((x + ox + size) % size)];
-      hgt[y * size + x] = src[y * size + x] * 0.35 + (sum / 9) * 0.65;
+  const xm = new Int32Array(size), xp = new Int32Array(size);                     // wrapped neighbour indices (textures tile)
+  for (let x = 0; x < size; x++) { xm[x] = (x + size - 1) % size; xp[x] = (x + 1) % size; }
+  if (paint) {
+    const tmp = new Float32Array(N), src = new Float32Array(N);
+    for (let pass = 0; pass < 2; pass++) {                                         // soften the relief so surfaces read as painted, not gritty (separable 3x3 box blur)
+      src.set(hgt);
+      for (let y = 0; y < size; y++) { const r = y * size; for (let x = 0; x < size; x++) tmp[r + x] = src[r + xm[x]] + src[r + x] + src[r + xp[x]]; }
+      for (let y = 0; y < size; y++) { const r = y * size, rm = xm[y] * size, rp = xp[y] * size; for (let x = 0; x < size; x++) hgt[r + x] = src[r + x] * 0.35 + ((tmp[rm + x] + tmp[r + x] + tmp[rp + x]) / 9) * 0.65; }
     }
-  }                                          // painterly: soften fine noise, richer colour, gentler relief
-  const cat = (x, y, k) => col[(((y + size) % size) * size + ((x + size) % size)) * 3 + k];
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const i = y * size + x, dh = (at(x - 1, y - 1) - at(x + 1, y + 1)) * bump * 1.1, s = clamp(1 + dh, 0.5, 1.5);
-    const c3 = [0, 0, 0];
-    for (let k = 0; k < 3; k++) {
-      let v = col[i * 3 + k];
-      if (paint) { let sum = 0; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) sum += cat(x + ox, y + oy, k); v = v * 0.4 + (sum / 9) * 0.6; }
-      c3[k] = v;
+  }
+  const cblur = paint ? new Float32Array(N * 3) : null;
+  if (paint) {
+    const tmp = new Float32Array(N * 3);
+    for (let y = 0; y < size; y++) { const r = y * size; for (let x = 0; x < size; x++) { const a = (r + xm[x]) * 3, b = (r + x) * 3, c = (r + xp[x]) * 3; tmp[b] = col[a] + col[b] + col[c]; tmp[b + 1] = col[a + 1] + col[b + 1] + col[c + 1]; tmp[b + 2] = col[a + 2] + col[b + 2] + col[c + 2]; } }
+    for (let y = 0; y < size; y++) { const r = y * size, rm = xm[y] * size, rp = xp[y] * size; for (let x = 0; x < size; x++) { const a = (rm + x) * 3, b = (r + x) * 3, c = (rp + x) * 3; for (let k = 0; k < 3; k++) cblur[b + k] = (tmp[a + k] + tmp[b + k] + tmp[c + k]) / 9; } }
+  }
+  const bb = bump * 1.1;
+  for (let y = 0; y < size; y++) {
+    const ym = xm[y] * size, yp = xp[y] * size;
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x, dh = (hgt[ym + xm[x]] - hgt[yp + xp[x]]) * bb, s = clamp(1 + dh, 0.5, 1.5);
+      let r = col[i * 3], g = col[i * 3 + 1], b = col[i * 3 + 2];
+      if (paint) { r = r * 0.4 + cblur[i * 3] * 0.6; g = g * 0.4 + cblur[i * 3 + 1] * 0.6; b = b * 0.4 + cblur[i * 3 + 2] * 0.6; const l = r * 0.3 + g * 0.59 + b * 0.11; r = clamp(l + (r - l) * 1.22); g = clamp(l + (g - l) * 1.22); b = clamp(l + (b - l) * 1.22); }
+      d[i * 4] = clamp(r * s) * 255; d[i * 4 + 1] = clamp(g * s) * 255; d[i * 4 + 2] = clamp(b * s) * 255; d[i * 4 + 3] = 255;
     }
-    if (paint) { const l = c3[0] * 0.3 + c3[1] * 0.59 + c3[2] * 0.11; for (let k = 0; k < 3; k++) c3[k] = clamp(l + (c3[k] - l) * 1.22); }
-    d[i * 4] = clamp(c3[0] * s) * 255; d[i * 4 + 1] = clamp(c3[1] * s) * 255; d[i * 4 + 2] = clamp(c3[2] * s) * 255; d[i * 4 + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
   return cv;
 }
 
 /** Returns { name: HTMLCanvasElement } for every material. `quality` shrinks the textures on slow devices. */
+const BIG_TEX = new Set(['grass', 'rock', 'stone']);                // only the large, close-up surfaces keep 512 px on high quality
 const ORGANIC_TEX = new Set(['rock', 'leaf', 'hedge', 'wood', 'grass', 'dirt', 'sand', 'stone']);
 export function buildTextures(quality = 'high') {
   const base = quality === 'low' ? 128 : quality === 'medium' ? 192 : 256;
@@ -332,8 +348,8 @@ export function buildTextures(quality = 'high') {
   const out = {};
   for (const name of Object.keys(GEN)) {
     const crisp = /^(camo|skin|gunmetal|polymer|gunwood|fabric)/.test(name);
-    const organic = ORGANIC_TEX.has(name), size = name === 'plain' ? 4 : name === 'fabric' ? 64 : crisp ? Math.min(128, pot(base)) : organic && quality === 'high' ? 512 : pot(base);
-    out[name] = bake(size, GEN[name], name === 'glow' || name === 'plain' ? 0 : crisp ? 0.5 : organic ? 1.5 : 1.15, crisp || organic ? false : undefined);   // organic surfaces: bigger, sharper (no painterly softening), stronger relief
+    const organic = ORGANIC_TEX.has(name), size = name === 'plain' ? 4 : name === 'fabric' ? 64 : crisp ? Math.min(128, pot(base)) : organic && quality === 'high' && BIG_TEX.has(name) ? 512 : pot(base);
+    out[name] = bake(size, GEN[name], name === 'glow' || name === 'plain' ? 0 : (crisp && !/S$/.test(name)) ? 0.5 : crisp ? 0 : organic ? 1.5 : 1.15, crisp || organic ? false : undefined);   // organic surfaces: bigger, sharper (no painterly softening), stronger relief
   }
   out.rock = out.rock || out.stone;
   return out;

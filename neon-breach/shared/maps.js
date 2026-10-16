@@ -391,6 +391,9 @@ function spawnAt(boxes, x, z, yawFrom) {
  * ceiling, and the ceiling gets light strips. Deterministic. Stairs, pads, rails, props with decor and boxes near objectives are kept.
  */
 const WALLISH = new Set(['wall', 'brick', 'stone', 'concrete', 'metal']);
+/** Open-air maps have no roof: the sky shows overhead (the other maps are covered halls). */
+export const OPEN_AIR = new Set(['courtyard', 'crosswire', 'wildwood', 'wreckage']);
+
 function enclose(m) {
   const bx = m.boxes, keepPts = [];
   for (const p of m.pickups) keepPts.push([p.x, p.z, 1.0]);
@@ -411,9 +414,32 @@ function enclose(m) {
   let top = 0; for (let i = 5; i < bx.length; i++) if (bx[i].y1 < 20) top = Math.max(top, bx[i].y1);
   const roofY = Math.max(9, Math.ceil(top + 1));
   for (let i = 1; i <= 4; i++) bx[i].y1 = roofY;
-  bx.push({ x0: -W - 1, x1: W + 1, z0: -W - 1, z1: W + 1, y0: roofY, y1: roofY + 0.6, mat: 'dark', roof: true });
-  for (const x of [-18, -6, 6, 18]) for (const z of [-21, -7, 7, 21]) bx.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 3, z1: z + 3, y0: roofY - 0.1, y1: roofY, mat: 'metal' });   // fixture housings; client/lights.js draws the fluorescent tubes + lights
+  m.open = OPEN_AIR.has(m.id);
+  if (!m.open) bx.push({ x0: -W - 1, x1: W + 1, z0: -W - 1, z1: W + 1, y0: roofY, y1: roofY + 0.6, mat: 'dark', roof: true });
+  if (!m.open) for (const x of [-18, -6, 6, 18]) for (const z of [-21, -7, 7, 21]) bx.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 3, z1: z + 3, y0: roofY - 0.1, y1: roofY, mat: 'metal' });   // fixture housings; client/lights.js draws the fluorescent tubes + lights
   m.roofY = roofY;
+}
+
+/** No waist-high cover: low solid props are raised to head height (COVER_H); barrels are removed. Props that carry something on top (cars, tractors)
+ *  and invisible collision for model-based props are left alone. */
+export const COVER_H = 2.0;
+function raiseCover(m) {
+  const bx = m.boxes, over = (a, c) => a.x0 < c.x1 && a.x1 > c.x0 && a.z0 < c.z1 && a.z1 > c.z0;
+  const drop = new Set();
+  for (const b of bx) {
+    if (b.st || b.y0 > 0.35 || b.y1 <= 0.55 || b.y1 >= 1.6 || b.x1 - b.x0 > 12 || b.z1 - b.z0 > 12) continue;
+    if (bx.some(c => c !== b && Math.abs(c.y0 - b.y1) < 0.06 && over(b, c))) continue;                        // something stands on it: a vehicle body
+    const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, near = (d) => { const dx = d.x !== undefined ? d.x : (d.x0 + d.x1) / 2, dz = d.z !== undefined ? d.z : (d.z0 + d.z1) / 2; return Math.abs(dx - cx) < 0.6 && Math.abs(dz - cz) < 0.9; };
+    if (b.vis === false) {
+      const bar = m.decor.findIndex(d => d.k === 'barrel' && near(d));
+      if (bar >= 0) { m.decor.splice(bar, 1); drop.add(b); continue; }                                       // oil drums: gone
+      const rb = m.decor.filter(d => d.k === 'rbox' && near(d) && d.y1 >= b.y1 - 0.01);                        // fuel pumps: taller
+      if (rb.length) { for (const d of rb) if (d.y0 === 0) d.y1 = COVER_H + 0.2; b.y1 = COVER_H + 0.2; }
+      continue;
+    }
+    b.y1 = COVER_H;
+  }
+  if (drop.size) m.boxes = bx.filter(b => !drop.has(b));
 }
 
 export function getMap(id) {
@@ -421,6 +447,8 @@ export function getMap(id) {
   if (cache[id]) return cache[id];
   const m = BUILDERS[id]();
   enclose(m);
+  raiseCover(m);
+  m.desc = (m.open ? 'Open-air. ' : 'Indoor hall. ') + m.desc;
   const bx = m.boxes;
   const t0 = m.spawnX.map((x, i) => spawnAt(bx, x, 24 + (i % 2) * 0.01, [0, 0]));
   const t1 = m.spawnX.map((x) => spawnAt(bx, x, -24, [0, 0]));

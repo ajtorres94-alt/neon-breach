@@ -242,7 +242,11 @@ export function appendMesh(out, mesh, pos, R, scale, tint, uvMul = 1) {
 
 
 // ---------------------------------------------------------------- organic shapes
-const hash3 = (x, y, z, s) => { const v = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + s * 19.19) * 43758.5453; return v - Math.floor(v); };
+const hash3 = (x, y, z, s) => {                                    // integer lattice hash (much cheaper than the old sin() hash)
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(z | 0, 1274126177) + Math.imul(s | 0, 1013904223)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h = Math.imul(h ^ (h >>> 16), 2246822519); h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
+};
 /** Smooth value noise in 0..1. */
 export function noise3(x, y, z, s = 0) {
   const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;

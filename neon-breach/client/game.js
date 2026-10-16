@@ -2,6 +2,7 @@
 import { createRenderer, MATERIALS } from './gl.js';
 import { getMap } from '/shared/maps.js';
 import { GUNS, drawGun } from './guns.js';
+import { drawGunHands } from './hands.js';
 import { drawSoldier } from './avatar.js';
 import { drawItem } from './items.js';
 import { buildLights, updateLights, drawFixtures, drawBeams } from './lights.js';
@@ -10,7 +11,7 @@ import { WEAPONS, WEAPON_ORDER, CATEGORIES, GADGETS, MODES, PICKUP_COLORS, STREA
 import { reloadPose, drawProps } from './reload.js';
 import { drawCameras, drawCameraCones, miniCamera } from './cameras.js';
 import { drawDog, drawSentry, drawRats, drawBarrier, hpBar } from './units.js';
-import { settings, onSettings, OPERATORS, teamInfo } from './settings.js';
+import { settings, onSettings, OPERATORS, teamInfo, setTeamNames } from './settings.js';
 import { input, bindCanvas, beginFrame, endFrame, actionDown, actionPressed, padPressed, mouseDelta, digitPressed, requestLock, releaseLock } from './input.js';
 import * as audio from './audio.js';
 import { boardHTML, esc } from './board.js';
@@ -56,12 +57,21 @@ const S = {
 };
 Object.assign(S, { units: [], uSm: new Map(), uFlash: new Map(), fx: { uav: 0, radar: 0, wall: false, helmet: false }, offer: null, streak: 0, barBoxes: new Map(), uLast: 0 });
 game.S = S;
+game.testFire = () => tryFire(now(), true, true);                  // test hook: fire the current weapon once
 game.getPortraits = () => getPortraits();
 
 // ------------------------------------------------------------------ renderer / canvas sizing
+/** Dynamic resolution: if the frame rate stays low the 3D canvas renders at a smaller size (down to 55%), and creeps back up when there is headroom. */
+let dynScale = 1, slowN = 0, fastN = 0;
+function tuneResolution(f) {
+  if (settings.gfx.dynRes === false || f < 8 || document.hidden) return;                      // f < 8: paused / software renderer, don't chase it
+  if (f < 42) { fastN = 0; if (++slowN >= 2 && dynScale > 0.55) { dynScale = Math.max(0.55, dynScale - 0.1); slowN = 0; resizeAll(); } }
+  else if (f > 57) { slowN = 0; if (++fastN >= 8 && dynScale < 1) { dynScale = Math.min(1, dynScale + 0.05); fastN = 0; resizeAll(); } }
+  else { slowN = 0; fastN = 0; }
+}
 function resizeAll() {
   const q = { high: 1, medium: 0.75, low: 0.5 }[settings.gfx.quality] || 1;
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * q;
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * q * dynScale;
   const w = window.innerWidth, h = window.innerHeight;
   if (R) R.resize(Math.max(160, Math.floor(w * dpr)), Math.max(120, Math.floor(h * dpr)));
   const hd = Math.min(window.devicePixelRatio || 1, 2);
@@ -179,6 +189,7 @@ function onRoom(m) {
 
 function onMatch(m) {
   setMapById(m.map);
+  setTeamNames(m.settings.teamNames);
   game.mode = m.mode; game.match = m.settings; S.weather = m.settings.weather || 'clear';
   S.pkKinds = m.pk || []; S.tracers = []; S.sparks = []; S.booms = []; S.dmgInd = [];
   S.calls = []; closeWheel(false); resetStreaks();
@@ -269,12 +280,17 @@ function onEvent(ev) {
       const shooter = S.players.get(ev.id);
       let muzzle = o;
       if (mine) {
-        const b = S.body, r = [Math.cos(S.yaw), 0, -Math.sin(S.yaw)], f = dirFromAngles(S.yaw, S.pitch);
+        const b = S.body, r = [Math.cos(S.yaw), 0, -Math.sin(S.yaw)], f = dirFromAngles(S.yaw, S.pitch), vm = S.vmMz;
         muzzle = [o[0] + r[0] * 0.22 + f[0] * 0.7, o[1] - 0.18 + f[1] * 0.7, o[2] + r[2] * 0.22 + f[2] * 0.7];
+        if (vm && t - vm.t < 0.5) {                                  // start the trail where the muzzle is drawn on screen: unproject its viewmodel position onto the world camera's ray
+          const up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = 1.0, tx = Math.tan(vm.fov / 2), px = vm.nx * tx * vm.asp * d, py = vm.ny * tx * d;
+          muzzle = [vm.x + f[0] * d + r[0] * px + up[0] * py, vm.y + f[1] * d + r[1] * px + up[1] * py, vm.z + f[2] * d + r[2] * px + up[2] * py];
+        }
       } else {
         const sp = spatial(o[0], o[1], o[2], 0.9);
         audio.play('gun:' + (ev.w === 'sentry' ? 'm4' : ev.w), sp);
         S.uFlash.set(ev.id, t + 0.07);
+        if (shooter && shooter.mz && Math.hypot(shooter.mz[0] - o[0], shooter.mz[1] - o[1], shooter.mz[2] - o[2]) < 3) muzzle = shooter.mz;   // the soldier's drawn gun muzzle, not their eye
         if (shooter && !shooter.al) break;
         S.spotted.set(ev.id, t + 2);
       }
@@ -283,7 +299,7 @@ function onEvent(ev) {
       for (const end of ev.ends) {
         const len = Math.hypot(end[0] - muzzle[0], end[1] - muzzle[1], end[2] - muzzle[2]);
         if (len < 0.5) continue;
-        S.tracers.push({ a: muzzle, b: end, t, life: 0.1, col: ev.w === 'sniper' || ev.w === 'golden' ? col : [1, 0.95, 0.7], w: ev.w === 'sniper' ? 0.035 : 0.018 });
+        S.tracers.push({ a: muzzle, b: end, t, life: window.__tracerLife || 0.1, col: ev.w === 'sniper' || ev.w === 'golden' ? col : [1, 0.95, 0.7], w: ev.w === 'sniper' ? 0.035 : 0.018 });
         if (len < (WEAPONS[ev.w] ? WEAPONS[ev.w].range - 1 : 100)) spark(end, 5, [1, 0.8, 0.4], 3);
       }
       if (!mine) S.flashRemote = (S.flashRemote || new Map()).set(ev.id, t + 0.06);
@@ -756,6 +772,7 @@ function drawViewmodel(t, cam) {
   }
   if (tt < S.switchEnd) { const p = (S.switchEnd - tt) / 0.3; y -= p * 0.18; tilt -= p * 0.4; }
   { const sr = S.sprintT || 0; x += sr * 0.1; y -= sr * 0.06; z += sr * 0.03; tilt -= sr * 0.5; }                // gun lowered and angled while sprinting
+  if (window.__vmOff) { x += window.__vmOff[0]; y += window.__vmOff[1]; z += window.__vmOff[2]; }
   const cp = Math.cos(tilt), sp2 = Math.sin(tilt);
   R.beginViewmodel(Math.max(0.6, cam.fov * 0.62 + 0.1));
   const gm = Array.from(R.rotate(yawG, tilt, rollG));              // gun orientation (columns = weapon-space x, y, z axes)
@@ -763,7 +780,9 @@ function drawViewmodel(t, cam) {
   const gold = id === 'golden';
   // local (weapon-space) point -> view space, rotated about X by `tilt`
   const P = (lx, ly, lz) => [x + lx * gm[0] + ly * gm[3] + lz * gm[6], y + lx * gm[1] + ly * gm[4] + lz * gm[7], z + lx * gm[2] + ly * gm[5] + lz * gm[8]];
-  drawGun(R, gun, { origin: P(0, 0, 0), yaw: yawG, pitch: tilt, roll: rollG, accent, gold });
+  drawGun(R, gun, { origin: P(0, 0, 0), yaw: yawG, pitch: tilt, roll: rollG, accent, gold, smooth: true });
+  { const mv = P(0, 0.02, gun.muzzle - 0.03), vf = Math.max(0.6, cam.fov * 0.62 + 0.1), asp = R.gl.canvas.width / R.gl.canvas.height, th = Math.tan(vf / 2);
+    S.vmMz = { nx: mv[0] / -mv[2] / (th * asp), ny: mv[1] / -mv[2] / th, fov: cam.fov, asp, x: cam.x, y: cam.y, z: cam.z, t }; }
   if (rl && rl.props.length) drawProps(R, rl.props, P, tilt);
   const mp = (tt - S.meleeAt) / 0.35;
   if (mp >= 0 && mp < 1) {                                          // knife slash (also used for the throw)
@@ -771,19 +790,16 @@ function drawViewmodel(t, cam) {
     R.rbox(kx, ky, kz, 0.022, 0.05, 0.34, yw, -0.2, [0.85, 0.9, 0.95], 0.008, 0.2, 1, 1.2);
     R.rbox(kx + 0.03, ky - 0.01, kz + 0.19, 0.045, 0.05, 0.13, yw, -0.2, [0.1, 0.1, 0.12], 0.02, 0, 1, 0.5);
   }
-  // gloved hands + sleeves
-  const glove = [0.27, 0.22, 0.17];
+  // sculpted gloved hands (client/hands.js) + sleeves
+  const glove = [0.2, 0.18, 0.15], gloveDk = glove.map(c => c * 0.55);
   const d1 = rl ? rl.h1 : [0, 0, 0], d2 = rl ? rl.h2 : [0, 0, 0];
-  const h1 = P(d1[0], -0.075 + d1[1], gun.grip + 0.07 + d1[2]), h2 = P(-0.02 + d2[0], -0.04 + d2[1], gun.fore + d2[2]);
-  R.texture('fabric', 2);
-  R.limb(h1[0] + 0.02, h1[1] - 0.02, h1[2] + 0.04, h1[0] + 0.1, h1[1] - 0.3, h1[2] + 0.5, 0.066, op.suit);
-  R.limb(h2[0], h2[1] - 0.02, h2[2] + 0.04, h2[0] - 0.22, h2[1] - 0.3, h2[2] + 0.45, 0.066, op.suit);
-  R.texture('plain');
-  R.rbox(h1[0], h1[1], h1[2], 0.086, 0.084, 0.132, 0, tilt, glove, 0.032, 0.08, 1, 0.25);
-  R.rbox(h2[0], h2[1], h2[2], 0.09, 0.074, 0.132, 0, tilt, glove, 0.032, 0.08, 1, 0.25);
-  R.rbox(h2[0] + 0.043, h2[1] + 0.024, h2[2] - 0.024, 0.036, 0.04, 0.084, 0, tilt, glove, 0.016, 0.08, 1, 0.25);
-  for (let k = 0; k < 4; k++) R.rbox(h2[0] - 0.036 + k * 0.026, h2[1] + 0.038, h2[2] - 0.068, 0.022, 0.026, 0.05, 0, tilt, glove.map(c => c * 0.9), 0.01, 0.06, 1, 0.25);   // knuckles
-  R.rbox(h1[0], h1[1] + 0.043, h1[2] + 0.0, 0.06, 0.012, 0.1, 0, tilt, [0.1, 0.1, 0.11], 0.005, 0, 1, 0.3);   // glove back plate
+  const { w1, w2 } = drawGunHands(R, gun, { M: gm, P, skin, glove, d1, d2 });
+  const arm = (w, dx, dz) => {                                         // forearm: dark glove cuff, then the sleeve running back towards the elbow
+    const l = Math.hypot(dx, -0.3, dz), ux = dx / l, uy = -0.3 / l, uz = dz / l, c = [w[0] + ux * 0.045, w[1] + uy * 0.045, w[2] + uz * 0.045];
+    R.texture('plain'); R.tube(w[0], w[1], w[2], c[0], c[1], c[2], 0.03, 0.034, gloveDk, 0.1);
+    R.texture('fabric', 2); R.tube(c[0] - ux * 0.005, c[1] - uy * 0.005, c[2] - uz * 0.005, w[0] + dx, w[1] - 0.3, w[2] + dz, 0.036, 0.05, op.suit, 0.05); R.texture('plain');
+  };
+  arm(w1, 0.1, 0.5); arm(w2, w2[0] < w1[0] - 0.06 ? -0.2 : 0.12, 0.45);
   if (t < S.flash) {
     R.transparent(true);
     const f = P(0, 0.02, gun.muzzle - 0.04), r = 0.04 + Math.random() * 0.025;
@@ -803,11 +819,13 @@ function playerPalette(pl) {
 const triMeasure = (key, fn) => { const a = R.state.tris; R.state.gunTris = 0; fn(); if (window.__triLog) window.__triLog[key] = Math.round(R.state.tris - a - R.state.gunTris); };
 function drawPlayer(pl, t, cam) { triMeasure(pl.id > 1e6 ? 'x' : (pl.isClone ? 'clone' : 'soldier'), () => drawPlayerInner(pl, t, cam)); }
 function drawPlayerInner(pl, t, cam) {
+  const dd = Math.hypot(pl.rx - cam.x, pl.rz - cam.z);
+  if (dd > 3 && !window.__showUnit) { const fx = -Math.sin(cam.yaw) * Math.cos(cam.pitch || 0), fz = -Math.cos(cam.yaw) * Math.cos(cam.pitch || 0); if ((fx * (pl.rx - cam.x) + fz * (pl.rz - cam.z)) / dd < 0.08) return; }    // behind the camera: skip (a few hundred draws per soldier)
   const op = playerPalette(pl), tm = teamMode(), ti = teamInfo(pl.team);
   const tc = tm ? ti.rgb : op.trim;
   const flash = (S.flashRemote && S.flashRemote.get(pl.id)) > t;
   const w = WEAPONS[pl.wpn] || WEAPONS.pistol;
-  drawSoldier(R, pl, t, { op, tc, tm, gun: GUNS[pl.wpn] || GUNS.pistol, accent: hex(w.color), gold: pl.wpn === 'golden', flash, far: Math.hypot(pl.rx - cam.x, pl.rz - cam.z) > 14 });
+  drawSoldier(R, pl, t, { op, tc, tm, gun: GUNS[pl.wpn] || GUNS.pistol, accent: hex(w.color), gold: pl.wpn === 'golden', flash, far: dd > 14, lod: dd > 11 ? 1 : 0 });
   if (!pl.al) return;
   const ch = pl.crouch ? 0.72 : 1, cy = Math.cos(pl.ra), sy = Math.sin(pl.ra);
   const wp = (lx, ly, lz) => [pl.rx + cy * lx + sy * lz, pl.ry + ly, pl.rz - sy * lx + cy * lz];
@@ -857,9 +875,15 @@ function drawUnits(t, cam) {
 
 function drawWorldObjects(t, cam) {
   const mp = game.map; if (!mp || game.view !== 'match') return;
-  if (window.__showcase) {                                          // test hook: draw one gun side-on in front of the camera
-    const g = GUNS[window.__showcase], f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)], r = [Math.cos(cam.yaw), -Math.sin(cam.yaw)], mid = (g.muzzle + 0.25) / 2, D = (0.75 + Math.abs(g.muzzle) * 0.55) * (window.__showZoom || 1);
-    drawGun(R, g, { origin: [cam.x + f[0] * D + r[0] * mid, cam.y, cam.z + f[1] * D + r[1] * mid], yaw: cam.yaw - Math.PI / 2, pitch: 0, accent: [0.8, 0.5, 0.2], gold: !!g.gold });
+  if (window.__showcase) {                                          // test hook: draw one gun (and optionally its hands) in front of the camera; __showRot turns it about its middle
+    const g = GUNS[window.__showcase], f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)], mid = (g.muzzle + 0.25) / 2, D = (0.75 + Math.abs(g.muzzle) * 0.55) * (window.__showZoom || 1);
+    const gy = cam.yaw - Math.PI / 2 + (window.__showRot || 0), Mh = Array.from(R.rotate(gy, window.__showPitch || 0, 0));
+    const og = [cam.x + f[0] * D - Mh[6] * mid, cam.y - Mh[7] * mid, cam.z + f[1] * D - Mh[8] * mid];
+    drawGun(R, g, { origin: og, yaw: gy, pitch: window.__showPitch || 0, accent: [0.8, 0.5, 0.2], gold: !!g.gold, smooth: !!window.__showHands });
+    if (window.__showHands) {                                       // test hook: the sculpted hands on the showcase gun
+      const Ph = (lx, ly, lz) => [og[0] + lx * Mh[0] + ly * Mh[3] + lz * Mh[6], og[1] + lx * Mh[1] + ly * Mh[4] + lz * Mh[7], og[2] + lx * Mh[2] + ly * Mh[5] + lz * Mh[8]];
+      drawGunHands(R, g, { M: Mh, P: Ph, skin: OPERATORS[settings.op % OPERATORS.length].skin, glove: [0.2, 0.18, 0.15] });
+    }
   }
   if (S.lights) drawFixtures(R, S.lights, cam, t);
   if (S.cams && S.cams.length) drawCameras(R, S.cams, t + S.camOff, t, S.camAlert);
@@ -869,7 +893,7 @@ function drawWorldObjects(t, cam) {
     const tint = [0.3, 1, 0.45];
     if (k === 'dog') drawDog(R, sm, t, tint); else if (k === 'sentry') drawSentry(R, sm, t, tint, Math.sin(t * 9) > 0.7); else if (k === 'rats') drawRats(R, sm, t, tint);
     else if (k === 'barrier') drawBarrier(R, { ...sm, h: window.__showHp || 300, m: 300, ra: 0 }, t, tint, cam.yaw);
-    else { R.style({ outline: 0.012, rim: 0.35 }); drawPlayer({ id: 77, rx: x, ry: y, rz: z, ra: a, rp: 0, walk: t * 5, speed: 4, crouch: false, lean: 0, al: !window.__dead, deadAt: t - ((window.__dead || {}).u || 0), death: window.__dead ? { type: window.__dead.type, push: [Math.sin(cam.yaw) * 0.6 + Math.cos(cam.yaw) * 0.8, Math.cos(cam.yaw) * 0.6 - Math.sin(cam.yaw) * 0.8], t0: t - window.__dead.u, hs: !!window.__dead.hs } : null, wpn: window.__showWpn || 'm4', op: +k || 0, team: 0, carry: -1, meleeAt: 0 }, t, cam); }
+    else { R.style({ outline: 0.0045, rim: 0.35 }); drawPlayer({ id: 77, rx: x, ry: y, rz: z, ra: a, rp: 0, walk: t * 5, speed: 4, crouch: false, lean: 0, al: !window.__dead, deadAt: t - ((window.__dead || {}).u || 0), death: window.__dead ? { type: window.__dead.type, push: [Math.sin(cam.yaw) * 0.6 + Math.cos(cam.yaw) * 0.8, Math.cos(cam.yaw) * 0.6 - Math.sin(cam.yaw) * 0.8], t0: t - window.__dead.u, hs: !!window.__dead.hs } : null, wpn: window.__showWpn || 'm4', op: +k || 0, team: 0, carry: -1, meleeAt: 0 }, t, cam); }
   }
   drawUnits(t, cam);
   if (window.__showItem) { const f = [-Math.sin(cam.yaw), -Math.cos(cam.yaw)]; drawItem(R, window.__showItem, GUNS, cam.x + f[0] * 1.1, cam.y - 0.05, cam.z + f[1] * 1.1, window.__spin ?? t * 1.6, [0.9, 0.7, 0.2], 1); }
@@ -880,7 +904,7 @@ function drawWorldObjects(t, cam) {
     const kind = S.pkKinds[i], col = hex(PICKUP_COLORS[kind] || '#fff'), y = p.y + 0.85 + Math.sin(t * 2 + i) * 0.09;
     const sc = Math.cos(spin), ss = Math.sin(spin);                                // spin direction (local +x -> world)
     drawItem(R, kind, GUNS, p.x, y, p.z, spin, col, Math.hypot(p.x - cam.x, p.z - cam.z));
-    R.style({ outline: 0.012, rim: 0.35 });
+    R.style({ outline: 0.0045, rim: 0.35 });
     R.tube(p.x, p.y + 0.02, p.z, p.x, p.y + 0.05, p.z, 0.46, 0.46, col, 0, 1);
   });
   // proximity mines
@@ -1020,7 +1044,7 @@ function render(t, dt) {
       if (pl.id === game.myId || cam.killcam === pl.id) continue;
       drawPlayer(pl, t, cam);
     }
-    R.style({ outline: 0.012, rim: 0.35 });
+    R.style({ outline: 0.0045, rim: 0.35 });
     drawWorldObjects(t, cam);
     R.style();
   }
@@ -1367,7 +1391,7 @@ let last = now(), fpsAcc = 0, fpsN = 0, pingAt = 0;
 function frame() {
   requestAnimationFrame(frame);
   const t = now(); let dt = t - last; last = t; dt = Math.min(dt, 0.05);
-  fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+  fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; if (game.view === 'match') tuneResolution(fps); }
   try {
     beginFrame();
     if (game.view === 'match') {

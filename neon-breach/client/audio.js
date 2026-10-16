@@ -1,6 +1,6 @@
 // Procedural audio, designed to sit closer to a AAA shooter mix than a chiptune: layered gunshots (crack + body + sub thump +
 // reverberant tail), metallic reload foley, convolution reverb on a send bus, a soft-clip "punch" stage on weapons, and a
-// cyberpunk score: synthwave / dark-electro with four-on-the-floor kick, rolling bass, arps and lead stabs (menu 100 bpm, match 132 bpm).
+// cyberpunk score: synthwave / dark-electro with four-on-the-floor kick, rolling bass, arps and lead stabs (menu 130 bpm, match 170 bpm).
 // Buses: master -> { sfx, ui, music } ; sfx and music also feed a shared reverb.
 
 let ctx = null, buses = null, noiseBuf = null, rainNodes = null, musicTimer = null, reverb = null, gunBus = null, musicMode = null;
@@ -277,12 +277,12 @@ const bassNote = (t, m, len, g) => { const f = mtof(m); tone('music', t, f, f, l
 /** Detuned saw stab / lead. */
 const lead = (t, m, len, g, lp = 3200) => { const f = mtof(m); for (const det of [-12, 0, 12]) tone('music', t, f, f, len, 0.06 * g, 'sawtooth', det / 40, { a: 0.006, detune: det, lp, send: 0.45, hold: len * 0.3 }); };
 
-/** mode: 'menu' (100 bpm, moody but moving) | 'match' (132 bpm, full-throttle) */
+/** mode: 'menu' (130 bpm, moody but moving) | 'match' (170 bpm, full-throttle) */
 export function setMusic(mode) {
   if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
   musicMode = mode;
   if (!ctx || !mode) return;
-  const menu = mode === 'menu', bpm = menu ? 100 : 132, beat = 60 / bpm, barLen = beat * 4, s16 = beat / 4;
+  const menu = mode === 'menu', bpm = menu ? 130 : 170, beat = 60 / bpm, barLen = beat * 4, s16 = beat / 4;
   const prog = menu ? PROG : PROG2;
   const ARP = [0, 2, 1, 3, 2, 1, 3, 2, 0, 3, 1, 2, 3, 1, 2, 3];                         // chord-tone order for the 16th arp
   const RHY = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0];                         // syncopated bass accents

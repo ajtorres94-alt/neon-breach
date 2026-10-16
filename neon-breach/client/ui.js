@@ -1,6 +1,6 @@
 // Menus, staging area, overlays and the settings panel. Game logic lives in game.js.
 import { game, initGame, join, leave, send, sendVote, setTeam, sendCfg, startMatch, backToLobby, setOperator, isHost, requestLock, releaseLock, takeScreenshot } from './game.js';
-import { settings, saveSettings, resetSection, onSettings, ACTIONS, bindLabel, OPERATORS, teamInfo, DEFAULTS } from './settings.js';
+import { settings, saveSettings, resetSection, onSettings, ACTIONS, bindLabel, OPERATORS, teamInfo, DEFAULTS, setTeamNames } from './settings.js';
 import { input } from './input.js';
 import * as audio from './audio.js';
 import { getMap, mapList } from '/shared/maps.js';
@@ -109,7 +109,7 @@ $('browser-body').addEventListener('click', (e) => { const b = e.target.closest(
 // ------------------------------------------------------------------ staging area
 const cfg = {
   map: $('cf-map'), mode: $('cf-mode'), limit: $('cf-limit'), time: $('cf-time'), bots: $('cf-bots'),
-  weather: $('cf-weather'), items: $('cf-items'), loadout: $('cf-loadout'),
+  weather: $('cf-weather'), items: $('cf-items'), loadout: $('cf-loadout'), tn0: $('cf-tn0'), tn1: $('cf-tn1'),
 };
 const BOT_LABELS = { 0: 'Off — humans only', 2: 'Fill to 2 operators', 4: 'Fill to 4 operators', 6: 'Fill to 6 operators', 8: 'Fill to 8 operators' };
 function fillSelect(sel, opts) { sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join(''); }
@@ -126,6 +126,7 @@ cfg.bots.addEventListener('change', () => sendCfg({ bots: +cfg.bots.value }));
 cfg.weather.addEventListener('change', () => sendCfg({ weather: cfg.weather.value }));
 cfg.items.addEventListener('change', () => sendCfg({ items: cfg.items.value }));
 cfg.loadout.addEventListener('change', () => sendCfg({ loadout: cfg.loadout.value }));
+for (const el of [cfg.tn0, cfg.tn1]) el.addEventListener('change', () => sendCfg({ teamNames: [cfg.tn0.value, cfg.tn1.value] }));
 
 $('btn-start').addEventListener('click', () => { startAudio(); startMatch(); });
 $('btn-copy').addEventListener('click', async () => {
@@ -158,6 +159,7 @@ function renderLobby(m) {
   if (cfg.limit.dataset.mode !== s.mode) { cfg.limit.dataset.mode = s.mode; fillSelect(cfg.limit, lim.map(v => [v, String(v)])); }
   $('cf-limitlabel').textContent = mode.limitLabel;
   setIf(cfg.limit, s.limit); setIf(cfg.time, s.time); setIf(cfg.bots, s.bots); setIf(cfg.weather, s.weather); setIf(cfg.items, s.items); setIf(cfg.loadout, s.loadout);
+  setTeamNames(s.teamNames); setIf(cfg.tn0, (s.teamNames || [])[0] || ''); setIf(cfg.tn1, (s.teamNames || [])[1] || ''); show('cf-teamnames', mode.team);
   for (const el of Object.values(cfg)) el.disabled = !host;
   $('cf-mapdesc').textContent = getMap(s.map).desc; $('cf-modedesc').textContent = mode.desc;
   show('btn-start', host); $('btn-start').disabled = m.phase !== 'lobby';
